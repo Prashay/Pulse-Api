@@ -70,6 +70,7 @@ function findPath(nodes: TreeNode[], id: string, acc: string[]): string[] | null
   return null;
 }
 
+
 export default function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [viewMode, setViewMode] = useState<"dashboard" | "studio">("dashboard");
