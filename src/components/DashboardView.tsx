@@ -150,6 +150,41 @@ export function DashboardView({
           <button className="btn" onClick={onSwitchToStudio} style={{ padding: "8px 14px" }}>
             ⚡ Open Request Studio
           </button>
+          <a
+            href="./pulse.zip"
+            download="pulse.zip"
+            className="btn"
+            style={{
+              padding: "8px 14px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              textDecoration: "none",
+            }}
+            title="Download Desktop App (pulse.zip)"
+            onClick={(e) => {
+              if (window.location.protocol === "file:") {
+                e.preventDefault();
+                window.location.href = "http://127.0.0.1:3001/pulse.zip";
+              }
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Download Desktop (.zip)</span>
+          </a>
         </div>
       </div>
 

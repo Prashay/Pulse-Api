@@ -757,6 +757,41 @@ export default function App() {
               {snippetOpen ? "Hide code" : "Code"}
             </button>
           )}
+
+          {/* Download Desktop App button on topbar corner */}
+          <a
+            href="./pulse.zip"
+            download="pulse.zip"
+            className="top-download-btn"
+            title="Download Pulse Desktop App (pulse.zip)"
+            aria-label="Download Desktop App"
+            onClick={(e) => {
+              flashImport("Starting download: Pulse API Studio (pulse.zip)...");
+              if (window.location.protocol === "file:") {
+                e.preventDefault();
+                window.location.href = "http://127.0.0.1:3001/pulse.zip";
+              }
+            }}
+          >
+            <span className="top-download-icon">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </span>
+            <span className="top-download-text">Download</span>
+            <span className="top-download-badge">ZIP</span>
+          </a>
         </div>
       </header>
       <div className={`layout ${viewMode === "studio" && snippetOpen ? "with-snippet" : ""}`}>

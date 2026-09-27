@@ -1,10 +1,37 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3001;
 
 app.use(express.json({ limit: "12mb" }));
 app.use(express.text({ limit: "12mb", type: ["text/*"] }));
+
+// Download endpoint for desktop bundle (pulse.zip from root or dist_electron)
+app.get(
+  ["/pulse.zip", "/dist_electron/pulse.zip", "/api/download", "/api/download/pulse.zip"],
+  (req, res) => {
+    const rootPath = path.join(__dirname, "pulse.zip");
+    const distPath = path.join(__dirname, "dist_electron", "pulse.zip");
+    const target = fs.existsSync(rootPath) ? rootPath : fs.existsSync(distPath) ? distPath : null;
+
+    if (target) {
+      res.download(target, "pulse.zip", (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).json({ ok: false, error: "Failed to download pulse.zip" });
+        }
+      });
+    } else {
+      res.status(404).json({ ok: false, error: "pulse.zip file not found on server" });
+    }
+  }
+);
+
 
 // Permissive CORS for local API testing across tools and ports
 app.use((_req, res, next) => {
