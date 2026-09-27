@@ -456,42 +456,6 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* Dashboard Footer Banner */}
-      <footer className="dash-footer-card">
-        <div className="dash-footer-main">
-          <div className="dash-footer-brand">
-            <img src="./logo.png" alt="Pulse API Studio" className="dash-footer-logo-img" />
-            <div>
-              <h4 className="dash-footer-title">Pulse API Studio</h4>
-              <p className="dash-footer-desc">Next-Gen API Client, Automated Microservices Runner & Mock Server</p>
-            </div>
-          </div>
-
-          <div className="dash-footer-credit-box">
-            <div className="dash-footer-credit-line">
-              <img src="./logo.png" alt="Pulse" className="dash-credit-logo-img" />
-              <span>Design and Developed by <strong className="dash-author-glow">Prashant Jha</strong></span>
-            </div>
-            <div className="dash-footer-copyright">
-              @copyright {new Date().getFullYear()} Pulse API. All rights reserved.
-            </div>
-          </div>
-        </div>
-
-        <div className="dash-footer-bottom">
-          <div className="dash-footer-features">
-            <span className="dash-feature-pill">⚡ cURL Import/Export</span>
-            <span className="dash-feature-pill">📁 Postman v2.1 Sync</span>
-            <span className="dash-feature-pill">🔒 Variable Scoping</span>
-            <span className="dash-feature-pill">🚀 Microservices Mocking</span>
-          </div>
-          <div className="dash-footer-version">
-            <span>Pulse Studio v1.0.0</span>
-            <span className="dash-footer-dot">•</span>
-            <span>Created by Prashant Jha</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

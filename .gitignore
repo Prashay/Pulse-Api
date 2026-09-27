@@ -55,6 +55,7 @@
 **/build/
 **/develop-eggs/
 **/dist/
+**/dist_electron/
 **/downloads/
 **/eggs/
 **/.eggs/

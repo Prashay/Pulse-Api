@@ -51,7 +51,8 @@ export const Footer: FC<FooterProps> = ({
         <div className="footer-credit-badge">
           <img src="./logo.png" alt="Pulse API Studio" className="footer-logo-img" />
           <span className="footer-credit-text">
-            Design and Developed by <strong className="footer-author-name">Prashant Jha</strong>
+            <span className="footer-credit-prefix">Design and Developed by </span>
+            <strong className="footer-author-name">Prashant Jha</strong>
           </span>
           <span className="footer-dot">•</span>
           <span className="footer-copyright-tag">@copyright {currentYear}</span>
