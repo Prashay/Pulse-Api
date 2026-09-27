@@ -153,11 +153,11 @@ export function DashboardView({
             <span>Request Studio</span>
           </button>
           <a
-            href="https://drive.google.com/file/d/19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw/view?usp=sharing"
+            href="https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0"
             target="_blank"
             rel="noopener noreferrer"
             className="btn dash-action-btn dash-download-btn"
-            title="Download Desktop App (pulse.zip on Google Drive)"
+            title="Download Desktop App (pulse.zip)"
           >
             <svg
               width="14"

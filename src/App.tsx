@@ -774,7 +774,7 @@ export default function App() {
 
           {/* Download Desktop App button on topbar corner */}
           <a
-            href="https://drive.google.com/file/d/19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw/view?usp=sharing"
+            href="https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0"
             target="_blank"
             rel="noopener noreferrer"
             className="top-download-btn"
