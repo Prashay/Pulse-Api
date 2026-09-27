@@ -74,6 +74,7 @@ function findPath(nodes: TreeNode[], id: string, acc: string[]): string[] | null
 export default function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [viewMode, setViewMode] = useState<"dashboard" | "studio">("dashboard");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("pulse_theme");
     if (saved === "blue" || saved === "dark" || saved === "light") return saved;
@@ -546,6 +547,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileSidebarOpen((prev) => !prev)}
+          title="Toggle Navigation Menu"
+          aria-label="Toggle Navigation Menu"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
         <div className="brand" onClick={() => setViewMode("dashboard")} style={{ cursor: "pointer" }}>
           <img src="./logo.png" alt="Pulse API Studio" className="brand-logo-img" />
           <div style={{ display: "flex", flexDirection: "column" }}>
@@ -760,17 +774,14 @@ export default function App() {
 
           {/* Download Desktop App button on topbar corner */}
           <a
-            href="./pulse.zip"
-            download="pulse.zip"
+            href="https://drive.google.com/file/d/19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
             className="top-download-btn"
             title="Download Pulse Desktop App (pulse.zip)"
             aria-label="Download Desktop App"
-            onClick={(e) => {
-              flashImport("Starting download: Pulse API Studio (pulse.zip)...");
-              if (window.location.protocol === "file:") {
-                e.preventDefault();
-                window.location.href = "http://127.0.0.1:3001/pulse.zip";
-              }
+            onClick={() => {
+              flashImport("Opening download link for Pulse API Studio (pulse.zip)...");
             }}
           >
             <span className="top-download-icon">
@@ -795,14 +806,29 @@ export default function App() {
         </div>
       </header>
       <div className={`layout ${viewMode === "studio" && snippetOpen ? "with-snippet" : ""}`}>
+        {mobileSidebarOpen && (
+          <div
+            className="mobile-sidebar-backdrop"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Close menu overlay"
+          />
+        )}
         <Sidebar
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
           viewMode={viewMode}
-          onSelectDashboard={() => setViewMode("dashboard")}
+          onSelectDashboard={() => {
+            setViewMode("dashboard");
+            setMobileSidebarOpen(false);
+          }}
           collections={data.collections}
           environments={data.environments}
           activeEnvId={data.activeEnvId}
           activeRequestId={activeTab?.requestId ?? null}
-          onOpenRequest={openRequest}
+          onOpenRequest={(cId, rId) => {
+            openRequest(cId, rId);
+            setMobileSidebarOpen(false);
+          }}
           onNewCollection={newCollection}
           onNewRequest={newRequest}
           onNewRequestType={createNewRequest}

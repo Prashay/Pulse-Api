@@ -25,6 +25,8 @@ interface Props {
   onSelectEnv: (id: string) => void;
   onManageEnv: () => void;
   onNewEnv: () => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export function Sidebar(props: Props) {
@@ -207,7 +209,25 @@ export function Sidebar(props: Props) {
   }, [props.collections, query]);
 
   return (
-    <aside className="sidebar" onClick={() => setMenu(null)}>
+    <aside className={`sidebar ${props.mobileOpen ? "mobile-open" : ""}`} onClick={() => setMenu(null)}>
+      {props.onCloseMobile && (
+        <div className="mobile-sidebar-header">
+          <div className="mobile-sidebar-title">
+            <img src="./logo.png" alt="Logo" style={{ width: 18, height: 18, borderRadius: 4 }} />
+            <span>Pulse Collections</span>
+          </div>
+          <button
+            className="mobile-sidebar-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onCloseMobile?.();
+            }}
+            aria-label="Close Sidebar"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="side-toolbar">
         <input
           className="search"

@@ -137,37 +137,27 @@ export function DashboardView({
 
         <div className="dash-hero-actions">
           <button
-            className="btn primary"
+            className="btn primary dash-action-btn"
             onClick={onImportClick}
-            style={{ padding: "8px 14px", display: "flex", alignItems: "center", gap: "6px" }}
             title="Import Postman Collections (.json), README.md, or API documentation (.doc, .docx, .txt)"
           >
-            <span>📁</span> Import JSON / README / Doc
+            <span>📁</span>
+            <span>Import JSON / Doc</span>
           </button>
-          <button className="btn ghost" onClick={() => onNewRequest()} style={{ padding: "8px 14px" }}>
-            + New Request
+          <button className="btn ghost dash-action-btn" onClick={() => onNewRequest()}>
+            <span>+</span>
+            <span>New Request</span>
           </button>
-          <button className="btn" onClick={onSwitchToStudio} style={{ padding: "8px 14px" }}>
-            ⚡ Open Request Studio
+          <button className="btn dash-action-btn" onClick={onSwitchToStudio}>
+            <span>⚡</span>
+            <span>Request Studio</span>
           </button>
           <a
-            href="./pulse.zip"
-            download="pulse.zip"
-            className="btn"
-            style={{
-              padding: "8px 14px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              textDecoration: "none",
-            }}
-            title="Download Desktop App (pulse.zip)"
-            onClick={(e) => {
-              if (window.location.protocol === "file:") {
-                e.preventDefault();
-                window.location.href = "http://127.0.0.1:3001/pulse.zip";
-              }
-            }}
+            href="https://drive.google.com/file/d/19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn dash-action-btn dash-download-btn"
+            title="Download Desktop App (pulse.zip on Google Drive)"
           >
             <svg
               width="14"
