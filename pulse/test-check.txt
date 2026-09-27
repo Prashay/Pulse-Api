@@ -1,0 +1,2 @@
+import { parseDocToCollection } from "./src/importExport.js";
+// Wait, importExport is TypeScript, we can compile or test with node if we want, or test the compiled dist/assets or test directly with tsx/node or inline regex.

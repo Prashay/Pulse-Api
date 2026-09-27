@@ -1,0 +1,3 @@
+@echo off
+echo Starting Pulse API Studio locally...
+npm.cmd run dev

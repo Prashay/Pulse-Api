@@ -1,0 +1,64 @@
+{
+  "name": "pulse-api-studio",
+  "productName": "Pulse API Studio",
+  "description": "Cross-platform API Client & Microservices Test Runner",
+  "author": "Pulse API Studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c cyan,magenta \"node server.js\" \"vite --host 0.0.0.0 --port 5173\"",
+    "server": "node server.js",
+    "client": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "desktop:build": "npm run build && electron-builder",
+    "desktop:start": "electron ."
+  },
+  "build": {
+    "appId": "com.pulseapistudio.app",
+    "productName": "Pulse API Studio",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "icon": "public/icon.png",
+    "win": {
+      "target": "dir",
+      "executableName": "pulse-api-studio",
+      "icon": "public/icon.png"
+    },
+    "mac": {
+      "target": "dir",
+      "icon": "public/icon.png"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "public/icon.png"
+    },
+    "files": [
+      "dist/**/*",
+      "public/**/*",
+      "main.js",
+      "server.js",
+      "package.json"
+    ]
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6"
+  }
+}
