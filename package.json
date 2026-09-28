@@ -14,6 +14,12 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "desktop:build": "tsc -b && vite build && electron-builder",
+    "desktop:build:win": "tsc -b && vite build && electron-builder --win",
+    "desktop:build:mac": "tsc -b && vite build && electron-builder --mac",
+    "desktop:build:mac:arm64": "tsc -b && vite build && electron-builder --mac --arm64",
+    "desktop:build:mac:x64": "tsc -b && vite build && electron-builder --mac --x64",
+    "desktop:build:mac:universal": "tsc -b && vite build && electron-builder --mac --universal",
+    "desktop:build:all": "tsc -b && vite build && electron-builder -mw",
     "desktop:start": "electron ."
   },
   "build": {
@@ -24,13 +30,72 @@
     },
     "icon": "public/icon.png",
     "win": {
-      "target": "dir",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "executableName": "pulse-api-studio",
       "icon": "public/icon.png"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pulse API Studio"
+    },
     "mac": {
-      "target": "dir",
-      "icon": "public/icon.png"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "public/icon.png",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "public/icon.png",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "linux": {
       "target": "dir",
