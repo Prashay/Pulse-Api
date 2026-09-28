@@ -287,10 +287,10 @@ export default function App() {
 
   const createNewRequest = (type: "http" | "websocket" | "graphql" | "mock" = "http") => {
     let colId = data.collections[0]?.id;
+    let createdCol: Collection | null = null;
     if (!colId) {
-      const newCol: Collection = { id: uid("col"), name: "Default Collection", description: "", children: [] };
-      patchData((prev) => ({ ...prev, collections: [...prev.collections, newCol] }));
-      colId = newCol.id;
+      createdCol = { id: uid("col"), name: "Default Collection", description: "", children: [] };
+      colId = createdCol.id;
     }
 
     let snap: RequestSnapshot;
@@ -329,10 +329,13 @@ export default function App() {
     }
 
     const req: RequestItem = snapshotToRequest(uid("req"), snap);
-    patchData((prev) => ({
-      ...prev,
-      collections: insertNode(prev.collections, colId!, null, req),
-    }));
+    patchData((prev) => {
+      const base = createdCol ? [...prev.collections, createdCol] : prev.collections;
+      return {
+        ...prev,
+        collections: insertNode(base, colId!, null, req),
+      };
+    });
     const tab: TabState = {
       id: uid("tab"),
       requestId: req.id,
@@ -367,15 +370,29 @@ export default function App() {
   };
 
   const newRequest = (collectionId: string, folderId: string | null) => {
+    let targetColId = collectionId;
+    let createdCol: Collection | null = null;
+    if (!targetColId || !data.collections.some((c) => c.id === targetColId)) {
+      if (data.collections.length === 0) {
+        createdCol = { id: uid("col"), name: "Default Collection", description: "", children: [] };
+        targetColId = createdCol.id;
+      } else {
+        targetColId = data.collections[0].id;
+      }
+    }
+
     const req: RequestItem = snapshotToRequest(uid("req"), emptySnapshot({ name: "New Request" }));
-    patchData((prev) => ({
-      ...prev,
-      collections: insertNode(prev.collections, collectionId, folderId, req),
-    }));
+    patchData((prev) => {
+      const base = createdCol ? [...prev.collections, createdCol] : prev.collections;
+      return {
+        ...prev,
+        collections: insertNode(base, targetColId, folderId, req),
+      };
+    });
     const tab: TabState = {
       id: uid("tab"),
       requestId: req.id,
-      collectionId,
+      collectionId: targetColId,
       name: req.name,
       dirty: false,
       draft: requestToSnapshot(req),

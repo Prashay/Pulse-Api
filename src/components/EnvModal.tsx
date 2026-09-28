@@ -84,7 +84,7 @@ export function EnvModal({
             {env.variables.length === 0 && (
               <button
                 className="btn sm ghost"
-                onClick={() => update(env.id, { variables: [kv("baseUrl", "https://httpbin.org")] })}
+                onClick={() => update(env.id, { variables: [kv("baseUrl", "https://api.example.com")] })}
               >
                 Add sample variable
               </button>

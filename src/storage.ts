@@ -1,157 +1,47 @@
 import type { AppData, Collection, Environment, HistoryEntry } from "./types";
-import { emptyAuth } from "./types";
-import { kv, uid } from "./id";
 
 const KEY = "pulse-api-studio-v1";
 
-function sampleCollections(): Collection[] {
-  return [
-    {
-      id: uid("col"),
-      name: "Local Test Suite",
-      description: "Ready-to-run local test suite running against local Pulse backend and mock endpoints.",
-      children: [
-        {
-          id: uid("req"),
-          type: "request",
-          name: "1. Local Health Check",
-          method: "GET",
-          url: "{{baseUrl}}/api/health",
-          params: [],
-          headers: [kv("Accept", "application/json")],
-          bodyMode: "none",
-          body: "",
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "2. Echo Query & Params",
-          method: "GET",
-          url: "{{baseUrl}}/api/mock/echo",
-          params: [kv("client", "pulse-studio"), kv("env", "local-test")],
-          headers: [],
-          bodyMode: "none",
-          body: "",
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "3. Post JSON Payload",
-          method: "POST",
-          url: "{{baseUrl}}/api/mock/echo",
-          params: [],
-          headers: [kv("Content-Type", "application/json")],
-          bodyMode: "json",
-          body: '{\n  "service": "pulse-api-studio",\n  "status": "local-test-passed",\n  "token": "{{authToken}}"\n}',
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "4. Get Mock Users List",
-          method: "GET",
-          url: "{{baseUrl}}/api/mock/users",
-          params: [],
-          headers: [kv("Accept", "application/json")],
-          bodyMode: "none",
-          body: "",
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "5. Bearer Auth Check",
-          method: "GET",
-          url: "{{baseUrl}}/api/mock/auth-check",
-          params: [],
-          headers: [],
-          bodyMode: "none",
-          body: "",
-          auth: {
-            ...emptyAuth(),
-            type: "bearer",
-            bearerToken: "{{authToken}}",
-          },
-        },
-      ],
-    },
-    {
-      id: uid("col"),
-      name: "HTTPBin Sandbox",
-      description: "Sample collection for remote testing GET/POST and auth flows.",
-      children: [
-        {
-          id: uid("req"),
-          type: "request",
-          name: "Get JSON",
-          method: "GET",
-          url: "{{remoteUrl}}/json",
-          params: [],
-          headers: [kv("Accept", "application/json")],
-          bodyMode: "none",
-          body: "",
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "Echo GET params",
-          method: "GET",
-          url: "{{remoteUrl}}/get",
-          params: [kv("page", "1"), kv("q", "pulse")],
-          headers: [],
-          bodyMode: "none",
-          body: "",
-          auth: emptyAuth(),
-        },
-        {
-          id: uid("req"),
-          type: "request",
-          name: "Post JSON",
-          method: "POST",
-          url: "{{remoteUrl}}/post",
-          params: [],
-          headers: [kv("Content-Type", "application/json")],
-          bodyMode: "json",
-          body: '{\n  "product": "Pulse API Studio",\n  "ok": true\n}',
-          auth: emptyAuth(),
-        },
-      ],
-    },
-  ];
+const TEST_COLLECTION_NAMES = new Set([
+  "local test suite",
+  "httpbin sandbox",
+]);
+
+const TEST_ENV_NAMES = new Set([
+  "localhost (3001)",
+  "localhost (3000)",
+  "localhost 3000",
+  "localhost 3001",
+  "localhost:3000",
+  "localhost:3001",
+  "local host 3000",
+  "local host 3001",
+  "remote sandbox",
+  "httpbin sandbox",
+]);
+
+function isTestCollection(name?: string): boolean {
+  if (!name) return false;
+  return TEST_COLLECTION_NAMES.has(name.trim().toLowerCase());
 }
 
-function sampleEnvironments(): Environment[] {
-  return [
-    {
-      id: uid("env"),
-      name: "Localhost (3001)",
-      variables: [
-        kv("baseUrl", "http://127.0.0.1:3001"),
-        kv("authToken", "pulse-secret-token-42"),
-        kv("remoteUrl", "https://httpbin.org"),
-      ],
-    },
-    {
-      id: uid("env"),
-      name: "Remote Sandbox",
-      variables: [
-        kv("baseUrl", "https://httpbin.org"),
-        kv("remoteUrl", "https://httpbin.org"),
-        kv("authToken", "demo-token"),
-      ],
-    },
-  ];
+function isTestEnvironment(name?: string): boolean {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  return (
+    TEST_ENV_NAMES.has(n) ||
+    n.startsWith("localhost (300") ||
+    n.startsWith("local host 300") ||
+    n === "remote sandbox" ||
+    n === "httpbin sandbox"
+  );
 }
 
 export function defaultData(): AppData {
-  const environments = sampleEnvironments();
   return {
-    collections: sampleCollections(),
-    environments,
-    activeEnvId: environments[0]?.id ?? null,
+    collections: [],
+    environments: [],
+    activeEnvId: null,
     history: [],
   };
 }
@@ -164,13 +54,40 @@ export function loadData(): AppData {
       localStorage.getItem("forge-api-studio-v1");
     if (!raw) return defaultData();
     const parsed = JSON.parse(raw) as AppData;
-    if (!Array.isArray(parsed.collections) || parsed.collections.length === 0) return defaultData();
-    return {
-      collections: parsed.collections,
-      environments: parsed.environments && parsed.environments.length > 0 ? parsed.environments : sampleEnvironments(),
-      activeEnvId: parsed.activeEnvId ?? parsed.environments?.[0]?.id ?? null,
-      history: Array.isArray(parsed.history) ? parsed.history.slice(0, 80) : [],
+
+    const collections: Collection[] = Array.isArray(parsed.collections)
+      ? parsed.collections.filter((c) => c && c.name && !isTestCollection(c.name))
+      : [];
+
+    const environments: Environment[] = Array.isArray(parsed.environments)
+      ? parsed.environments.filter((e) => e && e.name && !isTestEnvironment(e.name))
+      : [];
+
+    const activeEnvId =
+      parsed.activeEnvId && environments.some((e) => e.id === parsed.activeEnvId)
+        ? parsed.activeEnvId
+        : environments[0]?.id ?? null;
+
+    const history: HistoryEntry[] = Array.isArray(parsed.history)
+      ? parsed.history.slice(0, 80)
+      : [];
+
+    const cleanData: AppData = {
+      collections,
+      environments,
+      activeEnvId,
+      history,
     };
+
+    // If test collections or environments were filtered out from raw data, save the cleaned state
+    if (
+      (Array.isArray(parsed.collections) && parsed.collections.length !== collections.length) ||
+      (Array.isArray(parsed.environments) && parsed.environments.length !== environments.length)
+    ) {
+      saveData(cleanData);
+    }
+
+    return cleanData;
   } catch {
     return defaultData();
   }
