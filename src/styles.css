@@ -2689,6 +2689,581 @@ button, input, select, textarea {
   }
 }
 
+/* ==========================================================================
+   Apple iOS Style Welcome Animation & Overlay
+   ========================================================================== */
+
+.ios-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 18, 0.84);
+  backdrop-filter: blur(48px) saturate(190%);
+  -webkit-backdrop-filter: blur(48px) saturate(190%);
+  overflow: hidden;
+  animation: iosOverlayFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.45s ease;
+  user-select: none;
+}
+
+.ios-welcome-overlay.closing {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  pointer-events: none;
+}
+
+.ios-welcome-overlay.closing .ios-modal-card {
+  transform: scale(1.06) translateY(-12px);
+  filter: blur(14px);
+  opacity: 0;
+  transition: all 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes iosOverlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(48px) saturate(190%);
+  }
+}
+
+/* Dynamic Ambient iOS Background Glow Orbs */
+.ios-aurora {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
+
+.orb-1 {
+  width: 520px;
+  height: 520px;
+  top: 10%;
+  left: 20%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.38) 0%, rgba(99, 102, 241, 0.15) 70%, transparent 100%);
+  animation: auroraFloat1 12s ease-in-out infinite alternate;
+}
+
+.orb-2 {
+  width: 580px;
+  height: 580px;
+  bottom: 8%;
+  right: 15%;
+  background: radial-gradient(circle, rgba(147, 51, 234, 0.32) 0%, rgba(236, 72, 153, 0.12) 70%, transparent 100%);
+  animation: auroraFloat2 15s ease-in-out infinite alternate;
+}
+
+.orb-3 {
+  width: 440px;
+  height: 440px;
+  top: 45%;
+  left: 45%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.28) 0%, rgba(59, 130, 246, 0.1) 70%, transparent 100%);
+  animation: auroraFloat3 10s ease-in-out infinite alternate;
+}
+
+@keyframes auroraFloat1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30px, 40px) scale(1.1); }
+  100% { transform: translate(40px, -20px) scale(0.95); }
+}
+
+@keyframes auroraFloat2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(50px, -40px) scale(1.08); }
+  100% { transform: translate(-30px, 30px) scale(0.92); }
+}
+
+@keyframes auroraFloat3 {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-45%, -55%) scale(1.15); }
+  100% { transform: translate(-55%, -45%) scale(0.9); }
+}
+
+/* Quick Skip Pill */
+.ios-skip-pill {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ios-skip-pill:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  transform: scale(1.04);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.ios-kbd {
+  font-family: inherit;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.85);
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ==========================================================================
+   Stage 1: Apple Cursive "hello" Handcrafted Stroke
+   ========================================================================== */
+
+.ios-hello-stage {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.ios-hello-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.ios-hello-svg {
+  width: 460px;
+  max-width: 88vw;
+  height: auto;
+  filter: drop-shadow(0 12px 28px rgba(99, 102, 241, 0.45));
+}
+
+.hello-stroke-path {
+  stroke-dasharray: 2200;
+  stroke-dashoffset: 2200;
+  animation: appleDrawCursive 1.6s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+}
+
+@keyframes appleDrawCursive {
+  0% {
+    stroke-dashoffset: 2200;
+    opacity: 0.1;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.ios-greeting-sub {
+  margin-top: 18px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ios-greeting-word {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  display: inline-block;
+  animation: iosWordSlide 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes iosWordSlide {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.ios-tap-hint {
+  margin-top: 32px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  animation: iosPulseHint 2.4s ease-in-out infinite;
+}
+
+@keyframes iosPulseHint {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+
+/* ==========================================================================
+   Stage 2: Apple iOS Welcome Card & Feature Highlights
+   ========================================================================== */
+
+.ios-card-stage {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 20px;
+  max-height: 96vh;
+  overflow-y: auto;
+}
+
+.ios-modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 470px;
+  border-radius: 36px;
+  padding: 34px 30px;
+  background: linear-gradient(155deg, rgba(26, 34, 52, 0.72) 0%, rgba(13, 19, 32, 0.85) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.65),
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.3) inset;
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  animation: iosSpringCardIn 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+@keyframes iosSpringCardIn {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(30px);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+.ios-specular-edge {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+}
+
+/* Icon & Squircle */
+.ios-icon-container {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+.ios-sonar-ring {
+  position: absolute;
+  inset: -12px;
+  border-radius: 34px;
+  border: 1.5px solid rgba(56, 189, 248, 0.45);
+  pointer-events: none;
+  animation: iosSonarPulse 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.ios-sonar-ring.ring-2 {
+  animation-delay: 0.9s;
+}
+
+@keyframes iosSonarPulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+.ios-app-squircle {
+  position: relative;
+  width: 78px;
+  height: 78px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #1e293b 0%, #0c1527 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 16px 36px rgba(56, 189, 248, 0.28),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.squircle-gloss {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  pointer-events: none;
+}
+
+.ios-pulse-svg {
+  width: 58px;
+  height: 58px;
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.5));
+}
+
+.ios-ecg-path {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: iosDrawHeartbeat 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes iosDrawHeartbeat {
+  0% { stroke-dashoffset: 200; }
+  60% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -200; }
+}
+
+.ios-ecg-dot {
+  filter: drop-shadow(0 0 6px #38bdf8);
+  animation: iosEcgDotMotion 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes iosEcgDotMotion {
+  0% { transform: translate(6px, 36px); opacity: 0; }
+  20% { opacity: 1; }
+  45% { transform: translate(40px, 14px); }
+  60% { transform: translate(46px, 54px); }
+  90% { transform: translate(66px, 36px); opacity: 1; }
+  100% { transform: translate(66px, 36px); opacity: 0; }
+}
+
+/* Header Text */
+.ios-header-block {
+  margin-bottom: 22px;
+}
+
+.ios-supertitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin-bottom: 4px;
+}
+
+.ios-title {
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  margin: 0 0 6px 0;
+  color: #ffffff;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ios-subtitle {
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+}
+
+/* Features List */
+.ios-features-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.ios-feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 11px 13px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ios-feature-row:hover {
+  background: rgba(255, 255, 255, 0.065);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateX(4px);
+}
+
+.ios-feature-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.badge-blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.28) 0%, rgba(6, 182, 212, 0.18) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.badge-purple {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.28) 0%, rgba(236, 72, 153, 0.18) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.badge-green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28) 0%, rgba(5, 150, 105, 0.18) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.ios-feature-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
+}
+
+.ios-feature-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.ios-inline-code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #38bdf8;
+}
+
+/* Footer & Apple CTA */
+.ios-footer-block {
+  width: 100%;
+}
+
+.ios-cta-btn {
+  width: 100%;
+  height: 48px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #0071e3 0%, #2563eb 50%, #4f46e5 100%);
+  border: none;
+  color: #ffffff;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow:
+    0 10px 24px rgba(37, 99, 235, 0.42),
+    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ios-cta-btn:hover {
+  transform: scale(1.02);
+  box-shadow:
+    0 14px 32px rgba(37, 99, 235, 0.58),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55);
+}
+
+.ios-cta-btn:active {
+  transform: scale(0.97);
+}
+
+.cta-arrow {
+  transition: transform 0.2s ease;
+  font-size: 16px;
+}
+
+.ios-cta-btn:hover .cta-arrow {
+  transform: translateX(4px);
+}
+
+.ios-toggle-row {
+  margin-top: 13px;
+  display: flex;
+  justify-content: center;
+}
+
+.ios-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.ios-checkbox-label:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ios-checkbox-label input[type="checkbox"] {
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+
 
 
 

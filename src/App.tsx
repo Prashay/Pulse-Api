@@ -30,6 +30,7 @@ import { CurlModal } from "./components/CurlModal";
 import { ImportModal } from "./components/ImportModal";
 import { DashboardView } from "./components/DashboardView";
 import { Footer } from "./components/Footer";
+import { AppleWelcomeModal } from "./components/AppleWelcomeModal";
 import { toCurl } from "./curl";
 
 type ReqTab = "params" | "headers" | "body" | "auth";
@@ -94,6 +95,9 @@ export default function App() {
   const [snippetOpen, setSnippetOpen] = useState(true);
   const [copied, setCopied] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState<boolean>(() => {
+    return localStorage.getItem("pulse_skip_welcome") !== "true";
+  });
   const fileRef = useRef<HTMLInputElement>(null);
   const importDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -789,6 +793,17 @@ export default function App() {
             </button>
           )}
 
+          {/* Apple iOS Welcome Tour Button */}
+          <button
+            className="btn ghost sm"
+            onClick={() => setWelcomeOpen(true)}
+            title="Play Apple iOS Welcome Animation"
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: "11px", fontWeight: 600 }}
+          >
+            <span>✨</span>
+            <span>Welcome</span>
+          </button>
+
           {/* Download Desktop App button on topbar corner */}
           <a
             href="https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0"
@@ -1023,6 +1038,7 @@ export default function App() {
           onClose={() => setImportOpen(false)}
         />
       )}
+      <AppleWelcomeModal isOpen={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
     </div>
   );
 }
