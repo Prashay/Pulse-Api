@@ -39,6 +39,8 @@ export interface RequestSnapshot {
   bodyMode: BodyMode;
   body: string;
   auth: AuthConfig;
+  preScript?: string;
+  postScript?: string;
 }
 
 export interface RequestItem {
@@ -52,6 +54,8 @@ export interface RequestItem {
   bodyMode: BodyMode;
   body: string;
   auth: AuthConfig;
+  preScript?: string;
+  postScript?: string;
 }
 
 export interface FolderItem {
@@ -97,6 +101,12 @@ export interface HistoryEntry {
   error: boolean;
 }
 
+export interface TestResult {
+  name: string;
+  passed: boolean;
+  error?: string;
+}
+
 export interface ProxyResponse {
   ok: boolean;
   error: boolean;
@@ -106,6 +116,8 @@ export interface ProxyResponse {
   body: string;
   time: number;
   size: number;
+  testResults?: TestResult[];
+  scriptLogs?: string[];
 }
 
 export interface ConsoleLog {
@@ -192,6 +204,8 @@ export function emptySnapshot(partial?: Partial<RequestSnapshot>): RequestSnapsh
     bodyMode: "none",
     body: "",
     auth: emptyAuth(),
+    preScript: "",
+    postScript: "",
     ...partial,
   };
 }
@@ -206,6 +220,8 @@ export function requestToSnapshot(req: RequestItem): RequestSnapshot {
     bodyMode: req.bodyMode,
     body: req.body,
     auth: { ...req.auth },
+    preScript: req.preScript || "",
+    postScript: req.postScript || "",
   };
 }
 
@@ -224,5 +240,7 @@ export function snapshotToRequest(
     bodyMode: snap.bodyMode,
     body: snap.body,
     auth: { ...snap.auth },
+    preScript: snap.preScript || "",
+    postScript: snap.postScript || "",
   };
 }

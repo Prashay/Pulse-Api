@@ -4,6 +4,7 @@ import type {
   Collection,
   ConsoleLog,
   Environment,
+  KeyValue,
   ProxyResponse,
   RequestItem,
   RequestSnapshot,
@@ -20,7 +21,7 @@ import {
   saveData,
 } from "./storage";
 import { findRequest, insertNode, removeNode, renameNode, updateRequest } from "./tree";
-import { collectRequests, sendRequest } from "./request";
+import { buildOutbound, collectRequests, sendRequest } from "./request";
 import {
   downloadJson,
   exportPostmanCollection,
@@ -29,7 +30,7 @@ import {
   parseDocToCollection,
 } from "./importExport";
 import { Sidebar } from "./components/Sidebar";
-import { RequestPane } from "./components/RequestPane";
+import { RequestPane, type ReqTab } from "./components/RequestPane";
 import { ResponsePane } from "./components/ResponsePane";
 import { RunnerModal } from "./components/RunnerModal";
 import { EnvModal } from "./components/EnvModal";
@@ -48,7 +49,6 @@ import {
 } from "./components/SettingsModal";
 import { toCurl } from "./curl";
 
-type ReqTab = "params" | "headers" | "body" | "auth";
 export type ThemeMode = "blue" | "dark" | "light";
 
 function blankTab(): TabState {
@@ -402,7 +402,17 @@ export default function App() {
     const activeCol = getActiveCollection(activeTab);
     setSending((s) => ({ ...s, [tabId]: true }));
     try {
-      const resp = await sendRequest(activeTab.draft, activeEnv, activeCol);
+      const handleEnvUpdate = (updatedVars: KeyValue[]) => {
+        if (!activeEnv) return;
+        patchData((prev) => ({
+          ...prev,
+          environments: prev.environments.map((e) =>
+            e.id === activeEnv.id ? { ...e, variables: updatedVars } : e
+          ),
+        }));
+      };
+
+      const resp = await sendRequest(activeTab.draft, activeEnv, activeCol, handleEnvUpdate);
       setResponses((r) => ({ ...r, [tabId]: resp }));
       patchData((prev) => ({
         ...prev,
@@ -418,24 +428,21 @@ export default function App() {
         }),
       }));
 
-      // Log request & response telemetry to console
-      const reqHeaders: Record<string, string> = {};
-      for (const h of activeTab.draft.headers) {
-        if (h.enabled && h.key) reqHeaders[h.key] = h.value;
-      }
+      // Log request & response telemetry to console with fully resolved values
+      const outbound = buildOutbound(activeTab.draft, activeEnv, activeCol);
       addConsoleLog({
         id: uid("clog"),
         timestamp: Date.now(),
         type: resp.ok ? "network" : "error",
-        title: `${activeTab.draft.method} ${activeTab.draft.url || "request"}`,
+        title: `${activeTab.draft.method} ${outbound.url || "request"}`,
         method: activeTab.draft.method,
-        url: activeTab.draft.url,
+        url: outbound.url,
         status: resp.status,
         statusText: resp.statusText,
         time: resp.time,
         size: resp.size,
-        requestHeaders: reqHeaders,
-        requestBody: activeTab.draft.body,
+        requestHeaders: outbound.headers,
+        requestBody: outbound.body ?? undefined,
         responseHeaders: resp.headers,
         responseBody: resp.body,
         curl: toCurl(activeTab.draft, activeEnv, activeCol),
@@ -934,6 +941,16 @@ export default function App() {
             onClick={createNewEnvironment}
           >
             +
+          </button>
+          <button
+            className="top-env-eye-btn"
+            title={activeEnv ? `Quick Look: ${activeEnv.name} (${activeEnv.variables.length} variables)` : "Quick Look & Manage Environments"}
+            onClick={() => setEnvOpen(true)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </button>
         </div>
         <div className="top-actions">

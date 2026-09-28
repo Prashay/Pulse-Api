@@ -6,6 +6,7 @@ import type {
   ProxyResponse,
   RequestSnapshot,
 } from "./types";
+import { runScript } from "./scriptRunner";
 
 export interface ResolvedVar {
   key: string;
@@ -22,15 +23,15 @@ export function buildVariableMap(
 
   // 1. Collection variables (base layer)
   if (collection && Array.isArray(collection.variables)) {
-    const hasExplicitTrue = collection.variables.some((v) => v.enabled === true);
     for (const v of collection.variables) {
-      const isEnabled = hasExplicitTrue ? v.enabled !== false : true;
-      if (isEnabled && v.key && v.key.trim()) {
-        map.set(v.key.trim(), {
-          key: v.key.trim(),
-          value: v.value ?? "",
+      const isEnabled = v.enabled !== false;
+      if (isEnabled && v.key && String(v.key).trim()) {
+        const k = String(v.key).trim();
+        map.set(k, {
+          key: k,
+          value: v.value != null ? String(v.value) : "",
           source: "collection",
-          sourceName: collection.name,
+          sourceName: collection.name || "Collection",
         });
       }
     }
@@ -38,15 +39,15 @@ export function buildVariableMap(
 
   // 2. Environment variables (highest priority, override collection variables)
   if (env && Array.isArray(env.variables)) {
-    const hasExplicitTrue = env.variables.some((v) => v.enabled === true);
     for (const v of env.variables) {
-      const isEnabled = hasExplicitTrue ? v.enabled !== false : true;
-      if (isEnabled && v.key && v.key.trim()) {
-        map.set(v.key.trim(), {
-          key: v.key.trim(),
-          value: v.value ?? "",
+      const isEnabled = v.enabled !== false;
+      if (isEnabled && v.key && String(v.key).trim()) {
+        const k = String(v.key).trim();
+        map.set(k, {
+          key: k,
+          value: v.value != null ? String(v.value) : "",
           source: "environment",
-          sourceName: env.name,
+          sourceName: env.name || "Environment",
         });
       }
     }
@@ -80,10 +81,10 @@ export function lookupVariable(
 }
 
 export function extractVariables(text: string): string[] {
-  if (!text) return [];
-  const matches = text.match(/\{\{([^}]+)\}\}/g);
+  if (!text || typeof text !== "string") return [];
+  const matches = text.match(/\{\{\s*([^}]+?)\s*\}\}/g);
   if (!matches) return [];
-  return Array.from(new Set(matches.map((m) => m.replace(/[{}]/g, "").trim())));
+  return Array.from(new Set(matches.map((m) => m.replace(/[\{\}]/g, "").trim())));
 }
 
 export function interpolate(
@@ -91,7 +92,7 @@ export function interpolate(
   env: Environment | null,
   collection?: Collection | null
 ): string {
-  if (!text) return text;
+  if (!text || typeof text !== "string") return text || "";
   const map = buildVariableMap(env, collection);
   if (map.size === 0) return text;
 
@@ -100,11 +101,11 @@ export function interpolate(
   for (let round = 0; round < 5; round++) {
     if (!result.includes("{{")) break;
     let changed = false;
-    result = result.replace(/\{\{([^}]+)\}\}/g, (match, raw) => {
-      const hit = lookupVariable(String(raw), env, collection);
+    result = result.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (match, raw) => {
+      const hit = lookupVariable(String(raw).trim(), env, collection);
       if (hit != null) {
         changed = true;
-        return hit.value;
+        return String(hit.value);
       }
       return match;
     });
@@ -119,11 +120,12 @@ function enabledPairs(
   env: Environment | null,
   collection?: Collection | null
 ): [string, string][] {
+  if (!Array.isArray(rows)) return [];
   return rows
-    .filter((r) => r.enabled && r.key.trim())
+    .filter((r) => r.enabled !== false && r.key && String(r.key).trim())
     .map((r) => [
-      interpolate(r.key.trim(), env, collection),
-      interpolate(r.value, env, collection),
+      interpolate(String(r.key).trim(), env, collection),
+      interpolate(r.value != null ? String(r.value) : "", env, collection),
     ]);
 }
 
@@ -134,16 +136,30 @@ export function applyAuth(
   url: URL,
   collection?: Collection | null
 ): void {
+  if (!auth) return;
+
   if (auth.type === "bearer" && auth.bearerToken) {
-    headers.Authorization = `Bearer ${interpolate(auth.bearerToken, env, collection)}`;
+    // Remove any existing authorization headers to avoid duplicates
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase() === "authorization") delete headers[k];
+    }
+    const token = interpolate(String(auth.bearerToken).trim(), env, collection);
+    headers.Authorization = `Bearer ${token}`;
   } else if (auth.type === "basic" && (auth.basicUser || auth.basicPass)) {
-    const token = btoa(
-      `${interpolate(auth.basicUser, env, collection)}:${interpolate(auth.basicPass, env, collection)}`
-    );
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase() === "authorization") delete headers[k];
+    }
+    const u = interpolate(String(auth.basicUser ?? ""), env, collection);
+    const p = interpolate(String(auth.basicPass ?? ""), env, collection);
+    const raw = `${u}:${p}`;
+    const token =
+      typeof btoa !== "undefined"
+        ? btoa(unescape(encodeURIComponent(raw)))
+        : Buffer.from(raw).toString("base64");
     headers.Authorization = `Basic ${token}`;
   } else if (auth.type === "apikey" && auth.apiKeyName) {
-    const name = interpolate(auth.apiKeyName, env, collection);
-    const value = interpolate(auth.apiKeyValue, env, collection);
+    const name = interpolate(String(auth.apiKeyName).trim(), env, collection);
+    const value = interpolate(auth.apiKeyValue != null ? String(auth.apiKeyValue) : "", env, collection);
     if (auth.apiKeyIn === "query") {
       url.searchParams.set(name, value);
     } else {
@@ -182,15 +198,8 @@ export function buildOutbound(
   applyAuth(snap.auth, env, headers, url, collection);
 
   let body: string | null = null;
-  if (!["GET", "HEAD"].includes(snap.method)) {
-    if (snap.bodyMode === "json") {
-      body = interpolate(snap.body, env, collection);
-      if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
-        headers["Content-Type"] = "application/json";
-      }
-    } else if (snap.bodyMode === "raw") {
-      body = interpolate(snap.body, env, collection);
-    } else if (snap.bodyMode === "form-urlencoded") {
+  if (snap.body && snap.bodyMode !== "none") {
+    if (snap.bodyMode === "form-urlencoded") {
       const params = new URLSearchParams();
       for (const line of snap.body.split("\n")) {
         const idx = line.indexOf("=");
@@ -203,6 +212,11 @@ export function buildOutbound(
       if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
         headers["Content-Type"] = "application/x-www-form-urlencoded";
       }
+    } else {
+      body = interpolate(snap.body, env, collection);
+      if (snap.bodyMode === "json" && !Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
+        headers["Content-Type"] = "application/json";
+      }
     }
   }
 
@@ -212,34 +226,96 @@ export function buildOutbound(
 export async function sendRequest(
   snap: RequestSnapshot,
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  onEnvUpdate?: (updatedVariables: KeyValue[]) => void
 ): Promise<ProxyResponse> {
-  const outbound = buildOutbound(snap, env, collection);
-  const res = await fetch("/api/proxy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      method: outbound.method,
-      url: outbound.url,
-      headers: outbound.headers,
-      body: outbound.body,
-      timeout: 30000,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    return {
+  let effectiveSnap = { ...snap };
+  const allScriptLogs: string[] = [];
+
+  // 1. Run Pre-request Script (if configured)
+  if (snap.preScript && snap.preScript.trim()) {
+    try {
+      const preResult = await runScript("pre", snap.preScript, env, effectiveSnap, null);
+      if (preResult.envModified && onEnvUpdate) {
+        onEnvUpdate(preResult.updatedEnvVariables);
+      }
+      if (preResult.mutatedRequest) {
+        effectiveSnap = { ...effectiveSnap, ...preResult.mutatedRequest };
+      }
+      for (const log of preResult.consoleLogs) {
+        allScriptLogs.push(`[Pre-request] ${log.message}`);
+      }
+    } catch (err) {
+      allScriptLogs.push(`[Pre-request Error] ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 2. Build Outbound Request with interpolated variables
+  const outbound = buildOutbound(effectiveSnap, env, collection);
+
+  // 3. Dispatch to API Proxy
+  let responseData: ProxyResponse;
+  try {
+    const res = await fetch("/api/proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: outbound.method,
+        url: outbound.url,
+        headers: outbound.headers,
+        body: outbound.body,
+        timeout: 30000,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      responseData = {
+        ok: false,
+        error: true,
+        status: res.status,
+        statusText: res.statusText,
+        headers: {},
+        body: text || "Proxy request failed",
+        time: 0,
+        size: 0,
+      };
+    } else {
+      responseData = (await res.json()) as ProxyResponse;
+    }
+  } catch (err) {
+    responseData = {
       ok: false,
       error: true,
-      status: res.status,
-      statusText: res.statusText,
+      status: 0,
+      statusText: "Network Error",
       headers: {},
-      body: text || "Proxy request failed",
+      body: err instanceof Error ? err.message : String(err),
       time: 0,
       size: 0,
     };
   }
-  return (await res.json()) as ProxyResponse;
+
+  // 4. Run Post-response (Tests) Script (if configured)
+  if (snap.postScript && snap.postScript.trim()) {
+    try {
+      const postResult = await runScript("post", snap.postScript, env, effectiveSnap, responseData);
+      if (postResult.envModified && onEnvUpdate) {
+        onEnvUpdate(postResult.updatedEnvVariables);
+      }
+      responseData.testResults = postResult.testResults;
+      for (const log of postResult.consoleLogs) {
+        allScriptLogs.push(`[Tests] ${log.message}`);
+      }
+    } catch (err) {
+      allScriptLogs.push(`[Tests Error] ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (allScriptLogs.length > 0) {
+    responseData.scriptLogs = allScriptLogs;
+  }
+
+  return responseData;
 }
 
 export function prettyBody(raw: string, contentType = ""): string {

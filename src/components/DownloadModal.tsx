@@ -18,6 +18,7 @@ interface DownloadOption {
   url: string;
   recommended?: boolean;
   note?: string;
+  sourceType: "drive" | "github";
 }
 
 const MAC_OPTIONS: DownloadOption[] = [
@@ -31,17 +32,19 @@ const MAC_OPTIONS: DownloadOption[] = [
     url: "https://github.com/Prashay/Pulse-Api/releases/latest/download/Pulse-API-Studio-Universal.dmg",
     recommended: true,
     note: "Mount the .dmg file and drag Pulse API Studio into Applications.",
+    sourceType: "github",
   },
   {
     format: "zip",
     badge: ".ZIP",
     name: "macOS Archive (.zip)",
-    filename: "Pulse-API-Studio-Universal-mac.zip",
+    filename: "Pulse-API-Studio-Universal.zip",
     description: "Compressed portable package for macOS without mounting a disk image.",
     architecture: "Universal (Apple Silicon & Intel)",
-    url: "https://github.com/Prashay/Pulse-Api/releases/latest/download/Pulse-API-Studio-Universal-mac.zip",
+    url: "https://github.com/Prashay/Pulse-Api/releases/latest/download/Pulse-API-Studio-Universal.zip",
     recommended: false,
     note: "Extract the zip archive and double-click Pulse API Studio to run directly.",
+    sourceType: "github",
   },
 ];
 
@@ -56,6 +59,7 @@ const WINDOWS_OPTIONS: DownloadOption[] = [
     url: "https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0",
     recommended: true,
     note: "Extract pulse.zip to any directory and launch Pulse.exe without installation.",
+    sourceType: "drive",
   },
   {
     format: "exe",
@@ -67,6 +71,7 @@ const WINDOWS_OPTIONS: DownloadOption[] = [
     url: "https://github.com/Prashay/Pulse-Api/releases/latest/download/Pulse-API-Studio-Setup.exe",
     recommended: false,
     note: "Run setup executable to install Pulse API Studio into standard Program Files.",
+    sourceType: "github",
   },
 ];
 
@@ -74,6 +79,33 @@ export const DownloadModal: FC<DownloadModalProps> = ({ isOpen, onClose, onDownl
   const [selectedOS, setSelectedOS] = useState<OSType>("windows");
   const [detectedOS, setDetectedOS] = useState<OSType>("windows");
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+  const [releaseStatus, setReleaseStatus] = useState<"checking" | "available" | "pending">("checking");
+  const [showPendingHelp, setShowPendingHelp] = useState<string | null>(null);
+
+  // Check if GitHub releases are published
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    fetch("https://api.github.com/repos/Prashay/Pulse-Api/releases/latest")
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.assets && data.assets.length > 0) {
+          setReleaseStatus("available");
+        } else {
+          setReleaseStatus("pending");
+        }
+      })
+      .catch(() => {
+        if (isMounted) setReleaseStatus("pending");
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
 
   // Auto-detect client platform
   useEffect(() => {
@@ -93,17 +125,28 @@ export const DownloadModal: FC<DownloadModalProps> = ({ isOpen, onClose, onDownl
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (showPendingHelp) {
+          setShowPendingHelp(null);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showPendingHelp]);
 
   if (!isOpen) return null;
 
   const currentOptions = selectedOS === "mac" ? MAC_OPTIONS : WINDOWS_OPTIONS;
 
-  const handleDownloadClick = (opt: DownloadOption) => {
+  const handleDownloadClick = (e: React.MouseEvent, opt: DownloadOption) => {
+    if (opt.sourceType === "github" && releaseStatus === "pending") {
+      e.preventDefault();
+      setShowPendingHelp(opt.format);
+      return;
+    }
     if (onDownloadStarted) {
       onDownloadStarted(selectedOS, opt.format);
     }
@@ -212,6 +255,35 @@ export const DownloadModal: FC<DownloadModalProps> = ({ isOpen, onClose, onDownl
           </button>
         </div>
 
+        {/* Release Pending Notice on macOS */}
+        {selectedOS === "mac" && releaseStatus === "pending" && (
+          <div className="download-pending-notice">
+            <div className="pending-notice-head">
+              <span className="pending-notice-pill">Setup Required</span>
+              <strong>macOS Builds will activate after GitHub Release</strong>
+            </div>
+            <p className="pending-notice-desc">
+              Your Universal macOS packages (<code>.dmg</code> and <code>.zip</code>) are built in the cloud via GitHub Actions.
+              Click below to run the build in 1 click:
+            </p>
+            <div className="pending-notice-actions">
+              <a
+                href="https://github.com/Prashay/Pulse-Api/actions/workflows/build-electron.yml"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pending-action-btn"
+              >
+                <span>⚡ Run "Build Desktop Apps" on GitHub Actions</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Download Options Grid */}
         <div className="download-cards-container">
           <div className="download-section-lead">
@@ -263,7 +335,7 @@ export const DownloadModal: FC<DownloadModalProps> = ({ isOpen, onClose, onDownl
                     target="_blank"
                     rel="noopener noreferrer"
                     className="download-action-btn primary"
-                    onClick={() => handleDownloadClick(opt)}
+                    onClick={(e) => handleDownloadClick(e, opt)}
                     download={opt.filename}
                     title={`Download ${opt.filename}`}
                   >
@@ -370,6 +442,67 @@ export const DownloadModal: FC<DownloadModalProps> = ({ isOpen, onClose, onDownl
             </a>
           </div>
         </div>
+
+        {/* Pending Help Dialog */}
+        {showPendingHelp && (
+          <div className="pending-help-backdrop" onClick={() => setShowPendingHelp(null)}>
+            <div className="pending-help-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="pending-help-icon">⚡</div>
+              <h3 className="pending-help-title">macOS Release Not Yet Published</h3>
+              <p className="pending-help-desc">
+                The download link points to <strong>GitHub Releases</strong>, which has not been published yet on this repository.
+              </p>
+              <div className="pending-help-steps">
+                <div className="pending-step-item">
+                  <span className="step-circle">1</span>
+                  <div className="step-content">
+                    <strong>Open GitHub Actions</strong>
+                    <span>Go to the <code>Build Desktop Apps</code> workflow.</span>
+                  </div>
+                </div>
+                <div className="pending-step-item">
+                  <span className="step-circle">2</span>
+                  <div className="step-content">
+                    <strong>Click "Run workflow"</strong>
+                    <span>Select branch <code>main</code> and keep version <code>v1.0.0</code>.</span>
+                  </div>
+                </div>
+                <div className="pending-step-item">
+                  <span className="step-circle">3</span>
+                  <div className="step-content">
+                    <strong>Automatic Release Creation</strong>
+                    <span>GitHub compiles the Universal DMG & ZIP in ~3 mins and publishes the files.</span>
+                  </div>
+                </div>
+              </div>
+              <div className="pending-help-buttons">
+                <a
+                  href="https://github.com/Prashay/Pulse-Api/actions/workflows/build-electron.yml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="download-action-btn primary"
+                >
+                  Go to GitHub Actions
+                </a>
+                <a
+                  href={currentOptions.find((o) => o.format === showPendingHelp)?.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="download-action-btn copy-btn"
+                >
+                  Open Link Anyway
+                </a>
+                <button
+                  type="button"
+                  className="download-action-btn copy-btn"
+                  onClick={() => setShowPendingHelp(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

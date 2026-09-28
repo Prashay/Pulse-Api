@@ -5,7 +5,7 @@ import { KeyValueEditor } from "./KeyValueEditor";
 import { extractVariables, interpolate, lookupVariable } from "../request";
 import { parseCurl } from "../curl";
 
-type ReqTab = "params" | "headers" | "body" | "auth";
+export type ReqTab = "params" | "auth" | "headers" | "body" | "scripts";
 
 interface WsMessage {
   id: string;
@@ -42,6 +42,9 @@ export function RequestPane(props: Props) {
   const [wsError, setWsError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // Scripts sub-tab: "pre" (Before request) vs "post" (After response / Tests)
+  const [scriptSubTab, setScriptSubTab] = useState<"pre" | "post">("pre");
+
   useEffect(() => {
     return () => {
       if (wsRef.current) {
@@ -75,7 +78,33 @@ export function RequestPane(props: Props) {
     [draft.url, env, collection]
   );
 
-  const detectedVars = useMemo(() => extractVariables(draft.url), [draft.url]);
+  const detectedUrlVars = useMemo(() => extractVariables(draft.url), [draft.url]);
+
+  // Detected variables across other tabs for live resolution feedback:
+  const headerVars = useMemo(() => {
+    const list: string[] = [];
+    for (const h of draft.headers) {
+      if (h.enabled !== false) {
+        list.push(...extractVariables(h.key), ...extractVariables(h.value));
+      }
+    }
+    return Array.from(new Set(list));
+  }, [draft.headers]);
+
+  const authVars = useMemo(() => {
+    const list: string[] = [];
+    if (draft.auth.bearerToken) list.push(...extractVariables(draft.auth.bearerToken));
+    if (draft.auth.basicUser) list.push(...extractVariables(draft.auth.basicUser));
+    if (draft.auth.basicPass) list.push(...extractVariables(draft.auth.basicPass));
+    if (draft.auth.apiKeyName) list.push(...extractVariables(draft.auth.apiKeyName));
+    if (draft.auth.apiKeyValue) list.push(...extractVariables(draft.auth.apiKeyValue));
+    return Array.from(new Set(list));
+  }, [draft.auth]);
+
+  const bodyVars = useMemo(() => {
+    if (!draft.body) return [];
+    return extractVariables(draft.body);
+  }, [draft.body]);
 
   const handleWsConnect = () => {
     if (wsStatus === "connected" || wsStatus === "connecting") {
@@ -102,92 +131,129 @@ export function RequestPane(props: Props) {
 
       ws.onopen = () => {
         setWsStatus("connected");
-        const time = new Date().toLocaleTimeString();
         setWsMessages((prev) => [
           ...prev,
           {
             id: String(Date.now()),
             direction: "recv",
-            data: `[System] Connected to ${targetUrl}`,
-            time,
+            data: `[Connected to ${targetUrl}]`,
+            time: new Date().toLocaleTimeString(),
           },
         ]);
       };
 
       ws.onmessage = (event) => {
-        const time = new Date().toLocaleTimeString();
         setWsMessages((prev) => [
           ...prev,
           {
-            id: String(Date.now()) + Math.random(),
+            id: String(Date.now() + Math.random()),
             direction: "recv",
             data: typeof event.data === "string" ? event.data : "[Binary frame]",
-            time,
+            time: new Date().toLocaleTimeString(),
           },
         ]);
       };
 
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
+      ws.onerror = () => {
         setWsStatus("error");
-        setWsError("WebSocket connection encountered an error.");
+        setWsError("WebSocket connection encountered an error");
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = () => {
         setWsStatus("disconnected");
-        wsRef.current = null;
-        const time = new Date().toLocaleTimeString();
         setWsMessages((prev) => [
           ...prev,
           {
             id: String(Date.now()),
             direction: "recv",
-            data: `[System] Disconnected (code: ${event.code}${event.reason ? `, ${event.reason}` : ""})`,
-            time,
+            data: "[Connection closed]",
+            time: new Date().toLocaleTimeString(),
           },
         ]);
       };
     } catch (e) {
       setWsStatus("error");
-      setWsError(e instanceof Error ? e.message : "Failed to initialize WebSocket");
+      setWsError(e instanceof Error ? e.message : String(e));
     }
   };
 
   const handleWsSend = () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      alert("WebSocket is not connected!");
-      return;
+    if (!wsRef.current || wsStatus !== "connected") return;
+    try {
+      wsRef.current.send(wsInput);
+      setWsMessages((prev) => [
+        ...prev,
+        {
+          id: String(Date.now()),
+          direction: "sent",
+          data: wsInput,
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } catch (e) {
+      alert("Failed to send: " + (e instanceof Error ? e.message : String(e)));
     }
-    const msg = wsInput;
-    wsRef.current.send(msg);
-    const time = new Date().toLocaleTimeString();
-    setWsMessages((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()) + Math.random(),
-        direction: "sent",
-        data: msg,
-        time,
-      },
-    ]);
   };
+
+  // Helper to render live variable pills in any tab
+  const renderVariableChips = (vars: string[]) => {
+    if (vars.length === 0) return null;
+    return (
+      <div className="tab-variables-bar">
+        <span className="tab-var-label">
+          <span className="var-indicator-dot" />
+          <span>Resolved Variables:</span>
+        </span>
+        <div className="res-vars-pills">
+          {vars.map((v) => {
+            const hit = lookupVariable(v, env ?? null, collection ?? null);
+            return hit ? (
+              <span
+                key={v}
+                className="res-var-chip ok"
+                title={`From ${hit.sourceName}: ${v} = ${hit.value}`}
+              >
+                <span className="chip-key">{`{{${v}}}`}</span>
+                <span className="chip-arrow">→</span>
+                <span className="chip-val">{hit.value || '""'}</span>
+              </span>
+            ) : (
+              <span
+                key={v}
+                className="res-var-chip missing"
+                title={`Variable not defined in active environment (${env?.name || "No Environment"})`}
+              >
+                ⚠️ {`{{${v}}}`} <span className="chip-missing-tag">unresolved</span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Snippet inserters for scripts
+  const insertSnippet = (snippetCode: string) => {
+    const currentCode =
+      scriptSubTab === "pre" ? draft.preScript || "" : draft.postScript || "";
+    const updated = currentCode ? `${currentCode.trimEnd()}\n\n${snippetCode}` : snippetCode;
+    if (scriptSubTab === "pre") {
+      props.onChange({ preScript: updated });
+    } else {
+      props.onChange({ postScript: updated });
+    }
+  };
+
+  const hasPreScript = Boolean(draft.preScript && draft.preScript.trim());
+  const hasPostScript = Boolean(draft.postScript && draft.postScript.trim());
 
   return (
     <div className="pane request-pane">
-      <div className="urlbar">
+      <div className="url-bar">
         <select
           className={`method-select ${METHOD_COLORS[draft.method]}`}
           value={draft.method}
-          onChange={(e) => {
-            const nextMethod = e.target.value as HttpMethod;
-            props.onChange({
-              method: nextMethod,
-              url:
-                nextMethod === "WS" && (!draft.url || draft.url.startsWith("http"))
-                  ? "wss://echo.websocket.org"
-                  : draft.url,
-            });
-          }}
+          onChange={(e) => props.onChange({ method: e.target.value as HttpMethod })}
         >
           {METHODS.map((m) => (
             <option key={m} value={m}>
@@ -197,11 +263,7 @@ export function RequestPane(props: Props) {
         </select>
         <input
           className="url-input"
-          placeholder={
-            isWebSocket
-              ? "wss://echo.websocket.org  or  ws://localhost:8080/ws"
-              : "{{baseUrl}}/path  or  https://api.example.com/v1"
-          }
+          placeholder="https://api.example.com/v1/users or curl command..."
           value={draft.url}
           onChange={(e) => {
             const val = e.target.value;
@@ -216,7 +278,6 @@ export function RequestPane(props: Props) {
                   bodyMode: parsed.bodyMode,
                   body: parsed.body,
                   auth: parsed.auth,
-                  name: parsed.name,
                 });
                 return;
               } catch {
@@ -260,17 +321,17 @@ export function RequestPane(props: Props) {
       </div>
 
       {/* Target URL Resolution Bar */}
-      {detectedVars.length > 0 && (
+      {detectedUrlVars.length > 0 && (
         <div className="url-resolution-bar">
           <div className="res-badge">
             <span className="res-dot" />
-            <span>RESOLVED:</span>
+            <span>RESOLVED URL:</span>
           </div>
           <span className="res-url" title={resolvedUrl}>
             {resolvedUrl}
           </span>
           <div className="res-vars-pills">
-            {detectedVars.map((v) => {
+            {detectedUrlVars.map((v) => {
               const hit = lookupVariable(v, env ?? null, collection ?? null);
               return hit ? (
                 <span
@@ -318,32 +379,17 @@ export function RequestPane(props: Props) {
                   onClick={() => setWsMessages([])}
                   title="Clear messages log"
                 >
-                  Clear log
+                  Clear Log
                 </button>
               )}
             </div>
           </div>
-
-          {wsError && (
-            <div
-              style={{
-                background: "rgba(239, 68, 68, 0.15)",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
-                borderRadius: 6,
-                padding: "8px 12px",
-                color: "#fca5a5",
-                fontSize: 12,
-              }}
-            >
-              ⚠️ {wsError}
-            </div>
-          )}
-
-          <div className="ws-split-view">
-            <div className="ws-compose-pane">
+          {wsError && <div className="ws-error-alert">{wsError}</div>}
+          <div className="ws-main-split">
+            <div className="ws-composer-pane">
               <div className="ws-pane-header">
-                <span>Compose Message</span>
-                <div style={{ display: "flex", gap: 6 }}>
+                <span>Send Message / Frame</span>
+                <div style={{ display: "flex", gap: 4 }}>
                   <button
                     className="btn sm ghost"
                     style={{ fontSize: 10, padding: "2px 6px" }}
@@ -434,21 +480,34 @@ export function RequestPane(props: Props) {
       ) : (
         <>
           <div className="pane-tabs">
-            {(["params", "headers", "body", "auth"] as ReqTab[]).map((t) => (
+            {(["params", "auth", "headers", "body", "scripts"] as ReqTab[]).map((t) => (
               <button
                 key={t}
                 className={`pane-tab ${props.reqTab === t ? "active" : ""}`}
                 onClick={() => props.onReqTab(t)}
               >
-                {t === "params" ? "Params" : t === "headers" ? "Headers" : t === "body" ? "Body" : "Auth"}
+                {t === "params"
+                  ? "Params"
+                  : t === "auth"
+                  ? "Authorization"
+                  : t === "headers"
+                  ? "Headers"
+                  : t === "body"
+                  ? "Body"
+                  : "Scripts"}
+                {t === "scripts" && (hasPreScript || hasPostScript) && (
+                  <span className="tab-dot-badge" title="Scripts active" />
+                )}
               </button>
             ))}
-            {props.envName && <span className="env-chip">E  {props.envName}</span>}
+            {props.envName && <span className="env-chip">🌐 {props.envName}</span>}
           </div>
+
           <div className="pane-body">
+            {/* Params Tab */}
             {props.reqTab === "params" && (
               <>
-                <div className="kv-caption">Query Params</div>
+                <div className="kv-caption">Query Parameters</div>
                 <KeyValueEditor
                   rows={draft.params}
                   onChange={(params) => props.onChange({ params })}
@@ -457,14 +516,107 @@ export function RequestPane(props: Props) {
                 />
               </>
             )}
-            {props.reqTab === "headers" && (
-              <KeyValueEditor
-                rows={draft.headers}
-                onChange={(headers) => props.onChange({ headers })}
-                keyPlaceholder="Header"
-                valuePlaceholder="Value"
-              />
+
+            {/* Auth Tab */}
+            {props.reqTab === "auth" && (
+              <div className="auth-pane">
+                <div className="field" style={{ maxWidth: 220 }}>
+                  <label>Auth Type</label>
+                  <select
+                    value={draft.auth.type}
+                    onChange={(e) =>
+                      setAuth({ type: e.target.value as AuthConfig["type"] })
+                    }
+                  >
+                    <option value="none">No Auth</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic Auth</option>
+                    <option value="apikey">API Key</option>
+                  </select>
+                </div>
+                {draft.auth.type === "bearer" && (
+                  <div className="field">
+                    <label>Bearer Token</label>
+                    <input
+                      value={draft.auth.bearerToken}
+                      placeholder="{{token}} or raw-token-xyz"
+                      onChange={(e) => setAuth({ bearerToken: e.target.value })}
+                    />
+                  </div>
+                )}
+                {draft.auth.type === "basic" && (
+                  <>
+                    <div className="field">
+                      <label>Username</label>
+                      <input
+                        value={draft.auth.basicUser}
+                        placeholder="{{user}} or username"
+                        onChange={(e) => setAuth({ basicUser: e.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        value={draft.auth.basicPass}
+                        placeholder="{{password}} or password"
+                        onChange={(e) => setAuth({ basicPass: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+                {draft.auth.type === "apikey" && (
+                  <>
+                    <div className="field">
+                      <label>Key Name</label>
+                      <input
+                        value={draft.auth.apiKeyName}
+                        placeholder="{{key}} or X-API-Key"
+                        onChange={(e) => setAuth({ apiKeyName: e.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Key Value</label>
+                      <input
+                        value={draft.auth.apiKeyValue}
+                        placeholder="{{value}} or key-value"
+                        onChange={(e) => setAuth({ apiKeyValue: e.target.value })}
+                      />
+                    </div>
+                    <div className="field" style={{ maxWidth: 180 }}>
+                      <label>Add to</label>
+                      <select
+                        value={draft.auth.apiKeyIn}
+                        onChange={(e) =>
+                          setAuth({ apiKeyIn: e.target.value as AuthConfig["apiKeyIn"] })
+                        }
+                      >
+                        <option value="header">Header</option>
+                        <option value="query">Query Params</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+                {/* Live Auth Variable Resolution Feedback */}
+                {renderVariableChips(authVars)}
+              </div>
             )}
+
+            {/* Headers Tab */}
+            {props.reqTab === "headers" && (
+              <>
+                <KeyValueEditor
+                  rows={draft.headers}
+                  onChange={(headers) => props.onChange({ headers })}
+                  keyPlaceholder="Header"
+                  valuePlaceholder="Value"
+                />
+                {/* Live Header Variable Resolution Feedback */}
+                {renderVariableChips(headerVars)}
+              </>
+            )}
+
+            {/* Body Tab */}
             {props.reqTab === "body" && (
               <>
                 <div className="body-toolbar">
@@ -530,87 +682,202 @@ export function RequestPane(props: Props) {
                     />
                   </div>
                 )}
+                {/* Live Body Variable Resolution Feedback */}
+                {renderVariableChips(bodyVars)}
               </>
             )}
-            {props.reqTab === "auth" && (
-              <div className="auth-pane">
-                <div className="field" style={{ maxWidth: 220 }}>
-                  <label>Auth Type</label>
-                  <select
-                    value={draft.auth.type}
-                    onChange={(e) =>
-                      setAuth({ type: e.target.value as AuthConfig["type"] })
-                    }
+
+            {/* Scripts Tab (Postman Style: Pre-request Script & After Response Tests) */}
+            {props.reqTab === "scripts" && (
+              <div className="scripts-pane-layout">
+                {/* Sub-nav left column */}
+                <div className="scripts-sub-nav">
+                  <button
+                    className={`scripts-nav-btn ${scriptSubTab === "pre" ? "active" : ""}`}
+                    onClick={() => setScriptSubTab("pre")}
                   >
-                    <option value="none">No Auth</option>
-                    <option value="bearer">Bearer Token</option>
-                    <option value="basic">Basic Auth</option>
-                    <option value="apikey">API Key</option>
-                  </select>
+                    <span className="nav-title">Before request</span>
+                    <span className="nav-desc">Pre-request script</span>
+                    {hasPreScript && <span className="nav-active-dot" />}
+                  </button>
+                  <button
+                    className={`scripts-nav-btn ${scriptSubTab === "post" ? "active" : ""}`}
+                    onClick={() => setScriptSubTab("post")}
+                  >
+                    <span className="nav-title">After response</span>
+                    <span className="nav-desc">Tests & assertions</span>
+                    {hasPostScript && <span className="nav-active-dot" />}
+                  </button>
+
+                  <div className="scripts-snippets-section">
+                    <div className="scripts-snippets-title">QUICK SNIPPETS</div>
+                    {scriptSubTab === "pre" ? (
+                      <>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet('pm.environment.set("key", "value");')
+                          }
+                          title="Set an environment variable"
+                        >
+                          + Set an env variable
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet('const token = pm.environment.get("token");')
+                          }
+                          title="Get an environment variable"
+                        >
+                          + Get an env variable
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.request.headers.add({ key: "X-Timestamp", value: Date.now().toString() });'
+                            )
+                          }
+                          title="Add dynamic request header"
+                        >
+                          + Add dynamic header
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet('console.log("Pre-request script executing...");')
+                          }
+                          title="Log to console"
+                        >
+                          + Console log
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.test("Status code is 200", function () {\n    pm.response.to.have.status(200);\n});'
+                            )
+                          }
+                          title="Verify status code is 200"
+                        >
+                          + Status: Code is 200
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.test("Status code is 2xx success", function () {\n    pm.response.to.be.success;\n});'
+                            )
+                          }
+                          title="Verify response status is 2xx"
+                        >
+                          + Status: Successful (2xx)
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.test("Extract token to env", function () {\n    const jsonData = pm.response.json();\n    if (jsonData.token) {\n        pm.environment.set("token", jsonData.token);\n    }\n});'
+                            )
+                          }
+                          title="Extract token from response and save to environment"
+                        >
+                          + Extract token to env
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.test("Response body check", function () {\n    const jsonData = pm.response.json();\n    pm.expect(jsonData).to.be.an("object");\n});'
+                            )
+                          }
+                          title="Assert JSON body structure"
+                        >
+                          + JSON body check
+                        </button>
+                        <button
+                          type="button"
+                          className="snippet-item-btn"
+                          onClick={() =>
+                            insertSnippet(
+                              'pm.test("Response time is less than 500ms", function () {\n    pm.expect(pm.response.responseTime).to.be.below(500);\n});'
+                            )
+                          }
+                          title="Response time below 500ms"
+                        >
+                          + Response time &lt; 500ms
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                {draft.auth.type === "bearer" && (
-                  <div className="field">
-                    <label>Token</label>
-                    <input
-                      value={draft.auth.bearerToken}
-                      placeholder="{{token}} or raw-token-xyz"
-                      onChange={(e) => setAuth({ bearerToken: e.target.value })}
+
+                {/* Main Script Editor */}
+                <div className="scripts-editor-area">
+                  <div className="scripts-editor-header">
+                    <div className="scripts-editor-badge">
+                      <span className="badge-tag">JavaScript</span>
+                      <span className="scripts-target-title">
+                        {scriptSubTab === "pre"
+                          ? "Pre-request Script (Executes before sending request)"
+                          : "Post-response Tests (Executes after receiving response)"}
+                      </span>
+                    </div>
+                    <div className="scripts-editor-hint">
+                      {scriptSubTab === "pre"
+                        ? "Use pm.environment.set() or compute dynamic headers."
+                        : "Use pm.test() and pm.expect() to assert status and payload."}
+                    </div>
+                  </div>
+
+                  <div className="scripts-code-container">
+                    <textarea
+                      className="scripts-textarea"
+                      spellCheck={false}
+                      value={scriptSubTab === "pre" ? draft.preScript || "" : draft.postScript || ""}
+                      placeholder={
+                        scriptSubTab === "pre"
+                          ? "// Write JavaScript to execute before this request is sent.\n// Example:\npm.environment.set(\"timestamp\", Date.now().toString());\nconsole.log(\"Preparing request for:\", pm.info.requestName);"
+                          : "// Write JavaScript tests to execute after response is received.\n// Example:\npm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});\n\npm.test(\"Has valid JSON\", function () {\n    const data = pm.response.json();\n    pm.expect(data).to.be.an(\"object\");\n});"
+                      }
+                      onChange={(e) => {
+                        if (scriptSubTab === "pre") {
+                          props.onChange({ preScript: e.target.value });
+                        } else {
+                          props.onChange({ postScript: e.target.value });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Allow indenting with Tab key
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          const target = e.currentTarget;
+                          const start = target.selectionStart;
+                          const end = target.selectionEnd;
+                          const val = target.value;
+                          target.value = val.substring(0, start) + "    " + val.substring(end);
+                          target.selectionStart = target.selectionEnd = start + 4;
+                          if (scriptSubTab === "pre") {
+                            props.onChange({ preScript: target.value });
+                          } else {
+                            props.onChange({ postScript: target.value });
+                          }
+                        }
+                      }}
                     />
                   </div>
-                )}
-                {draft.auth.type === "basic" && (
-                  <>
-                    <div className="field">
-                      <label>Username</label>
-                      <input
-                        value={draft.auth.basicUser}
-                        placeholder="user"
-                        onChange={(e) => setAuth({ basicUser: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Password</label>
-                      <input
-                        type="password"
-                        value={draft.auth.basicPass}
-                        placeholder="password"
-                        onChange={(e) => setAuth({ basicPass: e.target.value })}
-                      />
-                    </div>
-                  </>
-                )}
-                {draft.auth.type === "apikey" && (
-                  <>
-                    <div className="field">
-                      <label>Key</label>
-                      <input
-                        value={draft.auth.apiKeyName}
-                        placeholder="X-API-Key"
-                        onChange={(e) => setAuth({ apiKeyName: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Value</label>
-                      <input
-                        value={draft.auth.apiKeyValue}
-                        placeholder="key-value"
-                        onChange={(e) => setAuth({ apiKeyValue: e.target.value })}
-                      />
-                    </div>
-                    <div className="field" style={{ maxWidth: 180 }}>
-                      <label>Add to</label>
-                      <select
-                        value={draft.auth.apiKeyIn}
-                        onChange={(e) =>
-                          setAuth({ apiKeyIn: e.target.value as AuthConfig["apiKeyIn"] })
-                        }
-                      >
-                        <option value="header">Header</option>
-                        <option value="query">Query Params</option>
-                      </select>
-                    </div>
-                  </>
-                )}
+                </div>
               </div>
             )}
           </div>

@@ -45,6 +45,7 @@
         }
       ],
       "executableName": "pulse-api-studio",
+      "artifactName": "Pulse-API-Studio-Setup.${ext}",
       "icon": "public/icon.png"
     },
     "nsis": {
@@ -72,6 +73,7 @@
         }
       ],
       "category": "public.app-category.developer-tools",
+      "artifactName": "Pulse-API-Studio-Universal.${ext}",
       "icon": "public/icon.png",
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
