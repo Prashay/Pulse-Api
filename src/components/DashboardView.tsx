@@ -17,6 +17,7 @@ interface Props {
   onClearHistory: () => void;
   onSwitchToStudio: () => void;
   onLoadSamples?: () => void;
+  onOpenDownload?: () => void;
 }
 
 export function DashboardView({
@@ -33,6 +34,7 @@ export function DashboardView({
   onClearHistory,
   onSwitchToStudio,
   onLoadSamples,
+  onOpenDownload,
 }: Props) {
   const [proxyPing, setProxyPing] = useState<{ ok: boolean; time: number } | null>(null);
   const [mockLoading, setMockLoading] = useState<string | null>(null);
@@ -164,12 +166,11 @@ export function DashboardView({
             <span>⚡</span>
             <span>Request Studio</span>
           </button>
-          <a
-            href="https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
             className="btn dash-action-btn dash-download-btn"
-            title="Download Desktop App (pulse.zip)"
+            onClick={onOpenDownload}
+            title="Download Pulse Desktop App for macOS (.dmg, .zip) or Windows (.zip, .exe)"
           >
             <svg
               width="14"
@@ -185,8 +186,8 @@ export function DashboardView({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Download Desktop (.zip)</span>
-          </a>
+            <span>Download Desktop</span>
+          </button>
         </div>
       </div>
 

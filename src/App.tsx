@@ -39,6 +39,7 @@ import { DashboardView } from "./components/DashboardView";
 import { Footer } from "./components/Footer";
 import { ConsoleDrawer } from "./components/ConsoleDrawer";
 import { AppleWelcomeModal } from "./components/AppleWelcomeModal";
+import { DownloadModal } from "./components/DownloadModal";
 import {
   SettingsModal,
   type FontSettings,
@@ -149,6 +150,7 @@ export default function App() {
   });
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [fontSettings, setFontSettings] = useState<FontSettings>(() => {
     const savedSize = localStorage.getItem("pulse_font_size");
     const savedFamily = localStorage.getItem("pulse_font_family");
@@ -1115,16 +1117,12 @@ export default function App() {
           </button>
 
           {/* Download Desktop App button on topbar corner */}
-          <a
-            href="https://drive.usercontent.google.com/download?id=19j8N3pDuqN0C4uWIcdV29FT7oM9FR0hw&export=download&authuser=0"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
             className="top-download-btn"
-            title="Download Pulse Desktop App (pulse.zip)"
+            title="Download Pulse Desktop App for macOS (.dmg, .zip) or Windows (.zip, .exe)"
             aria-label="Download Desktop App"
-            onClick={() => {
-              flashImport("Opening download link for Pulse API Studio (pulse.zip)...");
-            }}
+            onClick={() => setDownloadOpen(true)}
           >
             <span className="top-download-icon">
               <svg
@@ -1143,8 +1141,8 @@ export default function App() {
               </svg>
             </span>
             <span className="top-download-text">Download</span>
-            <span className="top-download-badge">ZIP</span>
-          </a>
+            <span className="top-download-badge">App</span>
+          </button>
         </div>
       </header>
       <div
@@ -1230,6 +1228,7 @@ export default function App() {
             onClearHistory={() => patchData({ history: [] })}
             onSwitchToStudio={() => switchViewMode("studio")}
             onLoadSamples={loadSampleTestSuite}
+            onOpenDownload={() => setDownloadOpen(true)}
           />
         ) : (
           <>
@@ -1389,6 +1388,13 @@ export default function App() {
         onUpdateSettings={handleUpdateFontSettings}
       />
       <AppleWelcomeModal isOpen={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
+      <DownloadModal
+        isOpen={downloadOpen}
+        onClose={() => setDownloadOpen(false)}
+        onDownloadStarted={(os, format) => {
+          flashImport(`Starting download for ${os === "mac" ? "macOS" : "Windows"} (${format.toUpperCase()})...`);
+        }}
+      />
     </div>
   );
 }
