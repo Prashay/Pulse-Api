@@ -25,6 +25,8 @@ interface Props {
   onSelectEnv: (id: string) => void;
   onManageEnv: () => void;
   onNewEnv: () => void;
+  onEditEnv?: (id: string) => void;
+  onDeleteEnv?: (id: string) => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
   isResizing?: boolean;
@@ -43,6 +45,26 @@ export function Sidebar(props: Props) {
     return "default";
   });
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  const toggleAllFolders = () => {
+    const allFolderIds: string[] = [];
+    const collectFolderIds = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (node.type === "folder") {
+          allFolderIds.push(node.id);
+          collectFolderIds(node.children);
+        }
+      }
+    };
+    props.collections.forEach((c) => collectFolderIds(c.children));
+
+    const hasAnyClosed = allFolderIds.some((id) => (collapsed[id] ?? true));
+    const next: Record<string, boolean> = { ...collapsed };
+    for (const id of allFolderIds) {
+      next[id] = !hasAnyClosed;
+    }
+    setCollapsed(next);
+  };
 
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusFilter, setPlusFilter] = useState("");
@@ -421,6 +443,21 @@ export function Sidebar(props: Props) {
             </button>
             <button
               className="header-action-btn"
+              title="Expand / Collapse All Folders"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleAllFolders();
+              }}
+              aria-label="Expand or Collapse All Folders"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="7 8 12 3 17 8" />
+                <polyline points="7 16 12 21 17 16" />
+                <line x1="12" y1="3" x2="12" y2="21" />
+              </svg>
+            </button>
+            <button
+              className="header-action-btn"
               title="Add New Collection Folder (+Folder)"
               onClick={(e) => {
                 e.stopPropagation();
@@ -512,6 +549,7 @@ export function Sidebar(props: Props) {
                     activeRequestId={props.activeRequestId}
                     collapsed={collapsed}
                     setCollapsed={setCollapsed}
+                    isSearching={Boolean(query.trim())}
                     onOpenRequest={props.onOpenRequest}
                     onNewRequest={props.onNewRequest}
                     onNewFolder={props.onNewFolder}
@@ -551,8 +589,32 @@ export function Sidebar(props: Props) {
                 onClick={() => props.onSelectEnv(env.id)}
               >
                 <span className="env-dot">E</span>
-                <span className="name">{env.name}</span>
+                <span className="name" title={env.name}>{env.name}</span>
                 {props.activeEnvId === env.id && <span className="env-check">&#10003;</span>}
+                <div className="env-row-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="env-action-btn"
+                    title={`Edit environment "${env.name}"`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onEditEnv ? props.onEditEnv(env.id) : props.onManageEnv();
+                    }}
+                    aria-label={`Edit ${env.name}`}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    className="env-action-btn danger-hover"
+                    title={`Delete environment "${env.name}"`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onDeleteEnv?.(env.id);
+                    }}
+                    aria-label={`Delete ${env.name}`}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             ))}
             <div className="env-actions-bar" style={{ display: "flex", gap: "6px", margin: "8px 6px 4px" }}>
@@ -687,6 +749,7 @@ function NodeList(props: {
   activeRequestId: string | null;
   collapsed: Record<string, boolean>;
   setCollapsed: Dispatch<SetStateAction<Record<string, boolean>>>;
+  isSearching?: boolean;
   onOpenRequest: (collectionId: string, requestId: string) => void;
   onNewRequest: (collectionId: string, folderId: string | null) => void;
   onNewFolder: (collectionId: string, folderId: string | null) => void;
@@ -695,62 +758,71 @@ function NodeList(props: {
 }) {
   return (
     <>
-      {props.nodes.map((node) =>
-        node.type === "folder" ? (
-          <div key={node.id} className="tree-folder">
-            <div
-              className="tree-item folder-item"
-              onClick={() => props.setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }))}
-            >
-              <button
-                className="icon-btn chev"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }));
-                }}
+      {props.nodes.map((node) => {
+        if (node.type === "folder") {
+          const isFolderCollapsed = props.isSearching
+            ? (props.collapsed[node.id] ?? false)
+            : (props.collapsed[node.id] ?? true);
+
+          return (
+            <div key={node.id} className="tree-folder">
+              <div
+                className="tree-item folder-item"
+                onClick={() => props.setCollapsed((s) => ({ ...s, [node.id]: !isFolderCollapsed }))}
               >
-                {props.collapsed[node.id] ? ">" : "v"}
-              </button>
-              <span className="folder-ico">📂</span>
-              <span className="name">{node.name}</span>
-              <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
                 <button
-                  className="tree-action-btn"
-                  title="Add Subfolder inside this folder"
-                  onClick={() => props.onNewFolder(props.collectionId, node.id)}
-                >
-                  +📁
-                </button>
-                <button
-                  className="tree-action-btn"
-                  title="Add Request inside this folder"
-                  onClick={() => props.onNewRequest(props.collectionId, node.id)}
-                >
-                  +
-                </button>
-                <button
-                  className="tree-action-btn"
-                  title="Rename folder"
-                  onClick={() => props.onRenameNode(node.id)}
-                >
-                  ✏️
-                </button>
-                <button
-                  className="tree-action-btn danger-hover"
-                  title="Delete folder"
-                  onClick={() => {
-                    if (window.confirm(`Delete folder "${node.name}" and all its contents?`)) {
-                      props.onDeleteNode(node.id);
-                    }
+                  className="icon-btn chev"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.setCollapsed((s) => ({ ...s, [node.id]: !isFolderCollapsed }));
                   }}
+                  aria-label={isFolderCollapsed ? "Expand folder" : "Collapse folder"}
                 >
-                  ✕
+                  {isFolderCollapsed ? ">" : "v"}
                 </button>
+                <span className="folder-ico">{isFolderCollapsed ? "📁" : "📂"}</span>
+                <span className="name">{node.name}</span>
+                <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="tree-action-btn"
+                    title="Add Subfolder inside this folder"
+                    onClick={() => props.onNewFolder(props.collectionId, node.id)}
+                  >
+                    +📁
+                  </button>
+                  <button
+                    className="tree-action-btn"
+                    title="Add Request inside this folder"
+                    onClick={() => props.onNewRequest(props.collectionId, node.id)}
+                  >
+                    +
+                  </button>
+                  <button
+                    className="tree-action-btn"
+                    title="Rename folder"
+                    onClick={() => props.onRenameNode(node.id)}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    className="tree-action-btn danger-hover"
+                    title="Delete folder"
+                    onClick={() => {
+                      if (window.confirm(`Delete folder "${node.name}" and all its contents?`)) {
+                        props.onDeleteNode(node.id);
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
+              {!isFolderCollapsed && <NodeList {...props} nodes={node.children} />}
             </div>
-            {!props.collapsed[node.id] && <NodeList {...props} nodes={node.children} />}
-          </div>
-        ) : (
+          );
+        }
+
+        return (
           <div
             key={node.id}
             className={`tree-item ${props.activeRequestId === node.id ? "active" : ""}`}
@@ -776,8 +848,8 @@ function NodeList(props: {
               </button>
             </div>
           </div>
-        )
-      )}
+        );
+      })}
     </>
   );
 }

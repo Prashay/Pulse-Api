@@ -63,6 +63,8 @@ export interface FolderItem {
   type: "folder";
   name: string;
   children: TreeNode[];
+  preScript?: string;
+  postScript?: string;
 }
 
 export type TreeNode = RequestItem | FolderItem;
@@ -73,6 +75,8 @@ export interface Collection {
   description: string;
   children: TreeNode[];
   variables?: KeyValue[];
+  preScript?: string;
+  postScript?: string;
 }
 
 export interface Environment {

@@ -86,11 +86,16 @@ export const CODE_FONT_PRESETS = [
   },
 ];
 
+export type PanelLayoutMode = "response-bottom" | "response-right";
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   settings: FontSettings;
   onUpdateSettings: (settings: FontSettings) => void;
+  panelLayout?: PanelLayoutMode;
+  onUpdatePanelLayout?: (layout: PanelLayoutMode) => void;
+  onResetPanelSizes?: () => void;
 }
 
 export const SettingsModal: FC<Props> = ({
@@ -98,9 +103,14 @@ export const SettingsModal: FC<Props> = ({
   onClose,
   settings,
   onUpdateSettings,
+  panelLayout = "response-bottom",
+  onUpdatePanelLayout,
+  onResetPanelSizes,
 }) => {
   const [localSettings, setLocalSettings] = useState<FontSettings>(settings);
+  const [activeTab, setActiveTab] = useState<"typography" | "layout">("typography");
   const [resetNotif, setResetNotif] = useState(false);
+  const [panelResetNotif, setPanelResetNotif] = useState(false);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -146,6 +156,14 @@ export const SettingsModal: FC<Props> = ({
     setTimeout(() => setResetNotif(false), 2200);
   };
 
+  const handleResetPanels = () => {
+    if (onResetPanelSizes) {
+      onResetPanelSizes();
+      setPanelResetNotif(true);
+      setTimeout(() => setPanelResetNotif(false), 2000);
+    }
+  };
+
   const sizePresets = [11, 12, 13, 14, 15, 16, 18];
 
   return (
@@ -153,15 +171,15 @@ export const SettingsModal: FC<Props> = ({
       <div
         className="modal settings-modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 580, width: "95%" }}
+        style={{ maxWidth: 620, width: "95%" }}
       >
         <div className="settings-modal-head">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>⚙️</span>
             <div>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Display & Typography Settings</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Preferences & Studio Settings</h2>
               <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
-                Customize font size, font family, and code editor scaling across Pulse API Studio.
+                Customize font scaling, typography, and panel workspace arrangement.
               </p>
             </div>
           </div>
@@ -170,160 +188,289 @@ export const SettingsModal: FC<Props> = ({
           </button>
         </div>
 
-        <div className="settings-section">
-          <div className="settings-label-row">
-            <div>
-              <span className="settings-title">Application Font Size</span>
-              <div className="settings-subtitle">Controls UI buttons, navigation, tree items, and labels</div>
-            </div>
-            <span className="settings-badge">{localSettings.fontSize}px</span>
-          </div>
+        {/* Settings Navigation Tabs */}
+        <div className="settings-nav-tabs">
+          <button
+            className={`settings-nav-tab ${activeTab === "typography" ? "active" : ""}`}
+            onClick={() => setActiveTab("typography")}
+          >
+            🔤 Typography & Fonts
+          </button>
+          <button
+            className={`settings-nav-tab ${activeTab === "layout" ? "active" : ""}`}
+            onClick={() => setActiveTab("layout")}
+          >
+            ◫ Panel Layout & Workspace
+          </button>
+        </div>
 
-          <div className="settings-size-controls">
-            <button
-              className="btn sm"
-              onClick={() => changeFontSize(-1)}
-              disabled={localSettings.fontSize <= 11}
-              title="Decrease font size"
-            >
-              A−
-            </button>
-            <div className="settings-pills">
-              {sizePresets.map((size) => (
+        {activeTab === "typography" ? (
+          <>
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <span className="settings-title">Application Font Size</span>
+                  <div className="settings-subtitle">Controls UI buttons, navigation, tree items, and labels</div>
+                </div>
+                <span className="settings-badge">{localSettings.fontSize}px</span>
+              </div>
+
+              <div className="settings-size-controls">
                 <button
-                  key={size}
-                  className={`settings-pill-btn ${localSettings.fontSize === size ? "active" : ""}`}
-                  onClick={() => update({ fontSize: size })}
+                  className="btn sm"
+                  onClick={() => changeFontSize(-1)}
+                  disabled={localSettings.fontSize <= 11}
+                  title="Decrease font size"
                 >
-                  {size}px
+                  A−
                 </button>
-              ))}
+                <div className="settings-pills">
+                  {sizePresets.map((size) => (
+                    <button
+                      key={size}
+                      className={`settings-pill-btn ${localSettings.fontSize === size ? "active" : ""}`}
+                      onClick={() => update({ fontSize: size })}
+                    >
+                      {size}px
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="btn sm"
+                  onClick={() => changeFontSize(1)}
+                  disabled={localSettings.fontSize >= 22}
+                  title="Increase font size"
+                >
+                  A+
+                </button>
+              </div>
             </div>
-            <button
-              className="btn sm"
-              onClick={() => changeFontSize(1)}
-              disabled={localSettings.fontSize >= 22}
-              title="Increase font size"
-            >
-              A+
-            </button>
-          </div>
-        </div>
 
-        <div className="settings-section">
-          <div className="settings-label-row">
-            <div>
-              <span className="settings-title">Application Font Family</span>
-              <div className="settings-subtitle">Choose typography style for the entire interface</div>
-            </div>
-          </div>
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <span className="settings-title">Application Font Family</span>
+                  <div className="settings-subtitle">Choose typography style for the entire interface</div>
+                </div>
+              </div>
 
-          <select
-            className="settings-select"
-            value={localSettings.fontFamily}
-            onChange={(e) => update({ fontFamily: e.target.value })}
-          >
-            {FONT_FAMILY_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.value}>
-                {preset.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="settings-section">
-          <div className="settings-label-row">
-            <div>
-              <span className="settings-title">Code & Editor Font</span>
-              <div className="settings-subtitle">Monospace font for JSON payloads, headers, cURL, and responses</div>
-            </div>
-            <span className="settings-badge">{localSettings.codeFontSize}px</span>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-            <select
-              className="settings-select"
-              value={localSettings.codeFontFamily}
-              onChange={(e) => update({ codeFontFamily: e.target.value })}
-            >
-              {CODE_FONT_PRESETS.map((preset) => (
-                <option key={preset.id} value={preset.value}>
-                  {preset.name}
-                </option>
-              ))}
-            </select>
-
-            <div style={{ display: "flex", gap: 4 }}>
-              <button
-                className="btn sm"
-                onClick={() => changeCodeFontSize(-1)}
-                disabled={localSettings.codeFontSize <= 10}
-                title="Decrease code size"
+              <select
+                className="settings-select"
+                value={localSettings.fontFamily}
+                onChange={(e) => update({ fontFamily: e.target.value })}
               >
-                −
-              </button>
-              <button
-                className="btn sm"
-                onClick={() => changeCodeFontSize(1)}
-                disabled={localSettings.codeFontSize >= 24}
-                title="Increase code size"
-              >
-                +
-              </button>
+                {FONT_FAMILY_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.value}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-        </div>
 
-        {/* Live Preview Box */}
-        <div className="settings-preview-box">
-          <div className="settings-preview-header">
-            <span>LIVE PREVIEW</span>
-            <span>{localSettings.fontSize}px / {localSettings.codeFontSize}px</span>
-          </div>
-          <div
-            className="settings-preview-body"
-            style={{
-              fontFamily: localSettings.fontFamily,
-              fontSize: `${localSettings.fontSize}px`,
-            }}
-          >
-            <div>The quick brown fox jumps over the lazy dog.</div>
-            <pre
-              className="settings-preview-code"
-              style={{
-                fontFamily: localSettings.codeFontFamily,
-                fontSize: `${localSettings.codeFontSize}px`,
-              }}
-            >
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <span className="settings-title">Code & Editor Font</span>
+                  <div className="settings-subtitle">Monospace font for JSON payloads, headers, cURL, and responses</div>
+                </div>
+                <span className="settings-badge">{localSettings.codeFontSize}px</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+                <select
+                  className="settings-select"
+                  value={localSettings.codeFontFamily}
+                  onChange={(e) => update({ codeFontFamily: e.target.value })}
+                >
+                  {CODE_FONT_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.value}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    className="btn sm"
+                    onClick={() => changeCodeFontSize(-1)}
+                    disabled={localSettings.codeFontSize <= 10}
+                    title="Decrease code size"
+                  >
+                    −
+                  </button>
+                  <button
+                    className="btn sm"
+                    onClick={() => changeCodeFontSize(1)}
+                    disabled={localSettings.codeFontSize >= 24}
+                    title="Increase code size"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Preview Box */}
+            <div className="settings-preview-box">
+              <div className="settings-preview-header">
+                <span>LIVE PREVIEW</span>
+                <span>{localSettings.fontSize}px / {localSettings.codeFontSize}px</span>
+              </div>
+              <div
+                className="settings-preview-body"
+                style={{
+                  fontFamily: localSettings.fontFamily,
+                  fontSize: `${localSettings.fontSize}px`,
+                }}
+              >
+                <div>The quick brown fox jumps over the lazy dog.</div>
+                <pre
+                  className="settings-preview-code"
+                  style={{
+                    fontFamily: localSettings.codeFontFamily,
+                    fontSize: `${localSettings.codeFontSize}px`,
+                  }}
+                >
 {`{
   "status": "ready",
   "engine": "Pulse API Studio",
   "fontSize": ${localSettings.fontSize},
   "codeSize": ${localSettings.codeFontSize}
 }`}
-            </pre>
-          </div>
-        </div>
+                </pre>
+              </div>
+            </div>
 
-        <div className="modal-actions" style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            className={`btn sm ${resetNotif ? "primary" : "ghost"}`}
-            onClick={resetDefaults}
-            title="Reset to default values: 13px UI, Monaco, IBMPlexMono, 'Courier New', monospace for code"
-          >
-            {resetNotif ? "✓ Restored Defaults" : "Reset to Default"}
-          </button>
-          {resetNotif && (
-            <span style={{ fontSize: 11, color: "var(--ok)", fontWeight: 600 }}>
-              Monaco, IBMPlexMono, Courier New active
-            </span>
-          )}
-          <div style={{ flex: 1 }} />
-          <button className="btn primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
+            <div className="modal-actions" style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                className={`btn sm ${resetNotif ? "primary" : "ghost"}`}
+                onClick={resetDefaults}
+                title="Reset to default values: 13px UI, Monaco, IBMPlexMono, 'Courier New', monospace for code"
+              >
+                {resetNotif ? "✓ Restored Defaults" : "Reset to Default"}
+              </button>
+              {resetNotif && (
+                <span style={{ fontSize: 11, color: "var(--ok)", fontWeight: 600 }}>
+                  Monaco, IBMPlexMono, Courier New active
+                </span>
+              )}
+              <div style={{ flex: 1 }} />
+              <button className="btn primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Panel Layout & Workspace Tab */
+          <div className="settings-layout-section">
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <span className="settings-title">Studio Panel Arrangement</span>
+                  <div className="settings-subtitle">
+                    Decide where to display the Response Pane and Code Snippet panel in the Studio workspace.
+                  </div>
+                </div>
+              </div>
+
+              <div className="layout-choice-grid">
+                {/* Option 1: Response Bottom / Snippet Right */}
+                <div
+                  className={`layout-card ${panelLayout === "response-bottom" ? "selected" : ""}`}
+                  onClick={() => onUpdatePanelLayout && onUpdatePanelLayout("response-bottom")}
+                >
+                  <div className="layout-card-header">
+                    <div className="layout-card-radio">
+                      <span className={`radio-dot ${panelLayout === "response-bottom" ? "checked" : ""}`} />
+                    </div>
+                    <div>
+                      <div className="layout-card-name">Response on Bottom, Snippet on Right</div>
+                      <div className="layout-card-badge">Standard Layout</div>
+                    </div>
+                  </div>
+
+                  <div className="layout-mockup-diagram">
+                    <div className="mockup-sidebar">Sidebar</div>
+                    <div className="mockup-center-v">
+                      <div className="mockup-request">Request Panel</div>
+                      <div className="mockup-divider-h">⋯ drag to resize ⋯</div>
+                      <div className="mockup-response active-mock">Response Pane (Bottom)</div>
+                    </div>
+                    <div className="mockup-right-col">
+                      <div className="mockup-snippet active-mock">Code Snippet (Right)</div>
+                    </div>
+                  </div>
+
+                  <p className="layout-card-desc">
+                    Classic stacked layout: Request on top, Response panel below it. The Code Snippet appears in the right sidebar.
+                  </p>
+                </div>
+
+                {/* Option 2: Response Right / Snippet Bottom */}
+                <div
+                  className={`layout-card ${panelLayout === "response-right" ? "selected" : ""}`}
+                  onClick={() => onUpdatePanelLayout && onUpdatePanelLayout("response-right")}
+                >
+                  <div className="layout-card-header">
+                    <div className="layout-card-radio">
+                      <span className={`radio-dot ${panelLayout === "response-right" ? "checked" : ""}`} />
+                    </div>
+                    <div>
+                      <div className="layout-card-name">Response on Right, Snippet on Bottom</div>
+                      <div className="layout-card-badge">Side-by-Side 3-Column</div>
+                    </div>
+                  </div>
+
+                  <div className="layout-mockup-diagram">
+                    <div className="mockup-sidebar">Sidebar</div>
+                    <div className="mockup-center-v">
+                      <div className="mockup-request">Request Panel</div>
+                      <div className="mockup-divider-h">⋯ drag to resize ⋯</div>
+                      <div className="mockup-snippet active-mock">Code Snippet (Bottom Drawer)</div>
+                    </div>
+                    <div className="mockup-right-col">
+                      <div className="mockup-response active-mock">Response Pane (Full Right)</div>
+                    </div>
+                  </div>
+
+                  <p className="layout-card-desc">
+                    Side-by-side layout: Request in center, Response in the right column with full vertical height. Code Snippet moves to the bottom drawer.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Resizing Tips & Reset */}
+            <div className="settings-section" style={{ background: "var(--bg-2)", padding: 14, borderRadius: 6, border: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>↔️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>Drag-to-Resize Dividers</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, lineHeight: 1.5 }}>
+                    You can smoothly resize both panels in real-time by hovering over and dragging the vertical or horizontal divider borders. Pulse remembers your custom panel dimensions across sessions.
+                  </div>
+                </div>
+                <button
+                  className="btn sm ghost"
+                  onClick={handleResetPanels}
+                  title="Reset panel width to 340px and bottom height to 280px"
+                  style={{ flexShrink: 0 }}
+                >
+                  {panelResetNotif ? "✓ Reset!" : "Reset Panel Sizes"}
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }} />
+              <button className="btn primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

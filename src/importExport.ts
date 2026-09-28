@@ -75,14 +75,59 @@ function urlFromPostman(raw: unknown): { url: string; params: KeyValue[] } {
   return { url: host ? `${protocol}://${host}${path}` : "", params };
 }
 
+function extractScriptsFromPostmanEvents(eventRaw: unknown): { preScript?: string; postScript?: string } {
+  if (!Array.isArray(eventRaw)) return {};
+  let preScript = "";
+  let postScript = "";
+
+  for (const ev of eventRaw) {
+    if (!ev || typeof ev !== "object") continue;
+    const item = ev as Record<string, unknown>;
+    const listen = String(item.listen || "").toLowerCase().trim();
+    const scriptObj = item.script;
+    if (!scriptObj) continue;
+
+    let code = "";
+    if (typeof scriptObj === "string") {
+      code = scriptObj;
+    } else if (typeof scriptObj === "object") {
+      const s = scriptObj as Record<string, unknown>;
+      if (Array.isArray(s.exec)) {
+        code = s.exec.map((line) => (line == null ? "" : String(line))).join("\n");
+      } else if (typeof s.exec === "string") {
+        code = s.exec;
+      } else if (typeof s.src === "string") {
+        code = s.src;
+      }
+    }
+
+    if (!code || !code.trim()) continue;
+
+    if (listen === "prerequest" || listen === "pre-request" || listen === "beforerequest") {
+      preScript = preScript ? `${preScript}\n${code}` : code;
+    } else if (listen === "test" || listen === "tests" || listen === "afterresponse") {
+      postScript = postScript ? `${postScript}\n${code}` : code;
+    }
+  }
+
+  return {
+    preScript: preScript.trim() || undefined,
+    postScript: postScript.trim() || undefined,
+  };
+}
+
 function itemFromPostman(item: Record<string, unknown>): TreeNode {
   const name = asString(item.name, "Untitled");
+  const scripts = extractScriptsFromPostmanEvents(item.event);
+
   if (Array.isArray(item.item)) {
     const folder: FolderItem = {
       id: uid("fld"),
       type: "folder",
       name,
       children: item.item.map((child) => itemFromPostman(child as Record<string, unknown>)),
+      preScript: scripts.preScript,
+      postScript: scripts.postScript,
     };
     return folder;
   }
@@ -115,6 +160,8 @@ function itemFromPostman(item: Record<string, unknown>): TreeNode {
     bodyMode,
     body,
     auth: authFromPostman(req.auth),
+    preScript: scripts.preScript,
+    postScript: scripts.postScript,
   };
   return request;
 }
@@ -129,6 +176,7 @@ export function importPostmanCollection(json: unknown): Collection {
     ? root.variables
     : [];
   const variables = rawVars.map(envValue).filter((v) => v.key.trim().length > 0);
+  const rootScripts = extractScriptsFromPostmanEvents(root.event);
 
   return {
     id: uid("col"),
@@ -136,6 +184,8 @@ export function importPostmanCollection(json: unknown): Collection {
     description: asString(info.description),
     children: items.map((item) => itemFromPostman(item as Record<string, unknown>)),
     variables,
+    preScript: rootScripts.preScript,
+    postScript: rootScripts.postScript,
   };
 }
 
@@ -692,7 +742,27 @@ function toPostmanItem(node: TreeNode): Record<string, unknown> {
         }),
     };
   }
-  return {
+  const events: Record<string, unknown>[] = [];
+  if (node.preScript && node.preScript.trim()) {
+    events.push({
+      listen: "prerequest",
+      script: {
+        type: "text/javascript",
+        exec: node.preScript.split("\n"),
+      },
+    });
+  }
+  if (node.postScript && node.postScript.trim()) {
+    events.push({
+      listen: "test",
+      script: {
+        type: "text/javascript",
+        exec: node.postScript.split("\n"),
+      },
+    });
+  }
+
+  const reqItem: Record<string, unknown> = {
     name: node.name,
     request: {
       method: node.method,
@@ -705,10 +775,34 @@ function toPostmanItem(node: TreeNode): Record<string, unknown> {
       auth: toPostmanAuth(node.auth),
     },
   };
+  if (events.length > 0) {
+    reqItem.event = events;
+  }
+  return reqItem;
 }
 
 export function exportPostmanCollection(col: Collection): unknown {
-  return {
+  const colEvents: Record<string, unknown>[] = [];
+  if (col.preScript && col.preScript.trim()) {
+    colEvents.push({
+      listen: "prerequest",
+      script: {
+        type: "text/javascript",
+        exec: col.preScript.split("\n"),
+      },
+    });
+  }
+  if (col.postScript && col.postScript.trim()) {
+    colEvents.push({
+      listen: "test",
+      script: {
+        type: "text/javascript",
+        exec: col.postScript.split("\n"),
+      },
+    });
+  }
+
+  const colItem: Record<string, unknown> = {
     info: {
       _postman_id: col.id,
       name: col.name,
@@ -717,6 +811,10 @@ export function exportPostmanCollection(col: Collection): unknown {
     },
     item: col.children.map(toPostmanItem),
   };
+  if (colEvents.length > 0) {
+    colItem.event = colEvents;
+  }
+  return colItem;
 }
 
 export function downloadJson(filename: string, data: unknown): void {

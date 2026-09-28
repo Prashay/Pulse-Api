@@ -301,8 +301,8 @@ export function RequestPane(props: Props) {
                 wsStatus === "connected"
                   ? "#ef4444"
                   : wsStatus === "connecting"
-                  ? "#f59e0b"
-                  : "#10b981",
+                    ? "#f59e0b"
+                    : "#10b981",
               minWidth: 100,
             }}
             onClick={handleWsConnect}
@@ -310,8 +310,8 @@ export function RequestPane(props: Props) {
             {wsStatus === "connected"
               ? "Disconnect"
               : wsStatus === "connecting"
-              ? "Connecting..."
-              : "Connect"}
+                ? "Connecting..."
+                : "Connect"}
           </button>
         ) : (
           <button className="send-btn" disabled={props.sending} onClick={props.onSend}>
@@ -489,14 +489,21 @@ export function RequestPane(props: Props) {
                 {t === "params"
                   ? "Params"
                   : t === "auth"
-                  ? "Authorization"
-                  : t === "headers"
-                  ? "Headers"
-                  : t === "body"
-                  ? "Body"
-                  : "Scripts"}
-                {t === "scripts" && (hasPreScript || hasPostScript) && (
-                  <span className="tab-dot-badge" title="Scripts active" />
+                    ? "Authorization"
+                    : t === "headers"
+                      ? "Headers"
+                      : t === "body"
+                        ? "Body"
+                        : "Scripts"}
+                {t === "scripts" && (hasPreScript || hasPostScript || Boolean(props.collection?.preScript || props.collection?.postScript)) && (
+                  <span
+                    className="tab-dot-badge"
+                    title={
+                      hasPreScript || hasPostScript
+                        ? "Scripts defined for this request"
+                        : "Collection-level scripts active"
+                    }
+                  />
                 )}
               </button>
             ))}
@@ -641,8 +648,8 @@ export function RequestPane(props: Props) {
                         {beautifyStatus === "success"
                           ? "Beautified!"
                           : beautifyStatus === "error"
-                          ? "Invalid JSON"
-                          : "Beautify"}
+                            ? "Invalid JSON"
+                            : "Beautify"}
                       </span>
                     </button>
                   )}
@@ -662,8 +669,8 @@ export function RequestPane(props: Props) {
                           {beautifyStatus === "success"
                             ? "Beautified!"
                             : beautifyStatus === "error"
-                            ? "Invalid JSON"
-                            : "Beautify JSON"}
+                              ? "Invalid JSON"
+                              : "Beautify JSON"}
                         </span>
                       </button>
                     )}
@@ -675,8 +682,8 @@ export function RequestPane(props: Props) {
                         draft.bodyMode === "json"
                           ? '{\n  "key": "value"\n}'
                           : draft.bodyMode === "form-urlencoded"
-                          ? "key1=value1\nkey2=value2"
-                          : "Raw request body"
+                            ? "key1=value1\nkey2=value2"
+                            : "Raw request body"
                       }
                       onChange={(e) => props.onChange({ body: e.target.value })}
                     />
@@ -825,6 +832,22 @@ export function RequestPane(props: Props) {
 
                 {/* Main Script Editor */}
                 <div className="scripts-editor-area">
+                  {props.collection && (props.collection.preScript || props.collection.postScript) && (
+                    <div className="collection-script-banner">
+                      <div className="collection-script-icon">📁</div>
+                      <div className="collection-script-info">
+                        <span className="collection-script-title">Collection Script Active</span>
+                        <span className="collection-script-desc">
+                          Parent collection <b>{props.collection.name}</b> has {
+                            [props.collection.preScript ? "Pre-request" : null, props.collection.postScript ? "Tests" : null]
+                              .filter(Boolean)
+                              .join(" & ")
+                          } scripts defined that run with this request.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="scripts-editor-header">
                     <div className="scripts-editor-badge">
                       <span className="badge-tag">JavaScript</span>
@@ -836,8 +859,8 @@ export function RequestPane(props: Props) {
                     </div>
                     <div className="scripts-editor-hint">
                       {scriptSubTab === "pre"
-                        ? "Use pm.environment.set() or compute dynamic headers."
-                        : "Use pm.test() and pm.expect() to assert status and payload."}
+                        ? (draft.preScript ? "✓ Pre-request script defined" : "Use pm.environment.set() or dynamic headers.")
+                        : (draft.postScript ? "✓ Test assertions defined" : "Use pm.test() and pm.expect() to assert status.")}
                     </div>
                   </div>
 

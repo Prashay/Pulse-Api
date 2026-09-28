@@ -5,6 +5,7 @@ import type {
   KeyValue,
   ProxyResponse,
   RequestSnapshot,
+  TestResult,
 } from "./types";
 import { runScript } from "./scriptRunner";
 
@@ -232,10 +233,18 @@ export async function sendRequest(
   let effectiveSnap = { ...snap };
   const allScriptLogs: string[] = [];
 
-  // 1. Run Pre-request Script (if configured)
+  // 1. Run Pre-request Scripts: Collection-level script runs first, then Request-level script
+  const preScripts: { source: string; code: string }[] = [];
+  if (collection?.preScript && collection.preScript.trim()) {
+    preScripts.push({ source: `Collection "${collection.name}"`, code: collection.preScript });
+  }
   if (snap.preScript && snap.preScript.trim()) {
+    preScripts.push({ source: "Request", code: snap.preScript });
+  }
+
+  for (const item of preScripts) {
     try {
-      const preResult = await runScript("pre", snap.preScript, env, effectiveSnap, null);
+      const preResult = await runScript("pre", item.code, env, effectiveSnap, null);
       if (preResult.envModified && onEnvUpdate) {
         onEnvUpdate(preResult.updatedEnvVariables);
       }
@@ -243,10 +252,10 @@ export async function sendRequest(
         effectiveSnap = { ...effectiveSnap, ...preResult.mutatedRequest };
       }
       for (const log of preResult.consoleLogs) {
-        allScriptLogs.push(`[Pre-request] ${log.message}`);
+        allScriptLogs.push(`[Pre-request (${item.source})] ${log.message}`);
       }
     } catch (err) {
-      allScriptLogs.push(`[Pre-request Error] ${err instanceof Error ? err.message : String(err)}`);
+      allScriptLogs.push(`[Pre-request Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -295,20 +304,33 @@ export async function sendRequest(
     };
   }
 
-  // 4. Run Post-response (Tests) Script (if configured)
+  // 4. Run Post-response (Tests) Scripts: Request-level tests first, then Collection-level tests
+  const postScripts: { source: string; code: string }[] = [];
   if (snap.postScript && snap.postScript.trim()) {
+    postScripts.push({ source: "Request", code: snap.postScript });
+  }
+  if (collection?.postScript && collection.postScript.trim()) {
+    postScripts.push({ source: `Collection "${collection.name}"`, code: collection.postScript });
+  }
+
+  const allTestResults: TestResult[] = [];
+  for (const item of postScripts) {
     try {
-      const postResult = await runScript("post", snap.postScript, env, effectiveSnap, responseData);
+      const postResult = await runScript("post", item.code, env, effectiveSnap, responseData);
       if (postResult.envModified && onEnvUpdate) {
         onEnvUpdate(postResult.updatedEnvVariables);
       }
-      responseData.testResults = postResult.testResults;
+      allTestResults.push(...postResult.testResults);
       for (const log of postResult.consoleLogs) {
-        allScriptLogs.push(`[Tests] ${log.message}`);
+        allScriptLogs.push(`[Tests (${item.source})] ${log.message}`);
       }
     } catch (err) {
-      allScriptLogs.push(`[Tests Error] ${err instanceof Error ? err.message : String(err)}`);
+      allScriptLogs.push(`[Tests Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (allTestResults.length > 0) {
+    responseData.testResults = allTestResults;
   }
 
   if (allScriptLogs.length > 0) {

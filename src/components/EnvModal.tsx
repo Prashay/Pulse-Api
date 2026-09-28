@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Environment } from "../types";
 import { kv, uid } from "../id";
 import { downloadJson, exportPostmanEnvironment } from "../importExport";
@@ -7,6 +7,7 @@ import { KeyValueEditor } from "./KeyValueEditor";
 interface Props {
   environments: Environment[];
   activeEnvId: string | null;
+  targetEnvId?: string | null;
   onChange: (envs: Environment[]) => void;
   onActive: (id: string | null) => void;
   onImportEnv: (file: File) => void;
@@ -16,12 +17,28 @@ interface Props {
 export function EnvModal({
   environments,
   activeEnvId,
+  targetEnvId,
   onChange,
   onActive,
   onImportEnv,
   onClose,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (targetEnvId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`env-card-${targetEnvId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          const input = el.querySelector("input");
+          input?.focus();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [targetEnvId]);
+
   const add = () => {
     const env: Environment = { id: uid("env"), name: "New Environment", variables: [] };
     onChange([...environments, env]);
@@ -64,7 +81,19 @@ export function EnvModal({
           Import a Postman Environment JSON (`*_environment.json` or globals).
         </p>
         {environments.map((env) => (
-          <div key={env.id} className="env-card">
+          <div
+            key={env.id}
+            id={`env-card-${env.id}`}
+            className="env-card"
+            style={
+              targetEnvId === env.id
+                ? {
+                    borderColor: "var(--accent)",
+                    boxShadow: "0 0 0 2px var(--accent-soft), 0 4px 16px rgba(59, 130, 246, 0.25)",
+                  }
+                : undefined
+            }
+          >
             <h3>
               <input
                 value={env.name}

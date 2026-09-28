@@ -44,6 +44,7 @@ import { DownloadModal } from "./components/DownloadModal";
 import {
   SettingsModal,
   type FontSettings,
+  type PanelLayoutMode,
   FONT_FAMILY_PRESETS,
   CODE_FONT_PRESETS,
 } from "./components/SettingsModal";
@@ -131,6 +132,7 @@ export default function App() {
   const [savedLabel, setSavedLabel] = useState<string | null>(null);
   const [runnerCol, setRunnerCol] = useState<Collection | null>(null);
   const [envOpen, setEnvOpen] = useState(false);
+  const [editTargetEnvId, setEditTargetEnvId] = useState<string | null>(null);
   const [curlOpen, setCurlOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importDropdownOpen, setImportDropdownOpen] = useState(false);
@@ -240,6 +242,134 @@ export default function App() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizingSidebar, sidebarWidth]);
+
+  // Panel layout mode ("response-bottom" or "response-right")
+  const [panelLayout, setPanelLayout] = useState<PanelLayoutMode>(() => {
+    const saved = localStorage.getItem("pulse_panel_layout");
+    if (saved === "response-bottom" || saved === "response-right") return saved;
+    return "response-bottom";
+  });
+
+  // Vertical resizer state for bottom panel in editor
+  const [bottomHeight, setBottomHeight] = useState<number>(() => {
+    const saved = localStorage.getItem("pulse_bottom_height");
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 100 && parsed <= 900) return parsed;
+    }
+    return 280;
+  });
+  const [isResizingBottom, setIsResizingBottom] = useState(false);
+
+  // Horizontal resizer state for right sidebar panel
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("pulse_right_width");
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 220 && parsed <= 900) return parsed;
+    }
+    return 340;
+  });
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  const editorRef = useRef<HTMLDivElement>(null);
+  const bottomHeightRef = useRef(bottomHeight);
+  bottomHeightRef.current = bottomHeight;
+  const rightWidthRef = useRef(rightWidth);
+  rightWidthRef.current = rightWidth;
+
+  const handleUpdatePanelLayout = (next: PanelLayoutMode) => {
+    setPanelLayout(next);
+    localStorage.setItem("pulse_panel_layout", next);
+    flashImport(
+      `Studio Layout: ${
+        next === "response-bottom"
+          ? "Standard (Response on Bottom)"
+          : "Side-by-Side (Response on Right)"
+      }`
+    );
+  };
+
+  const handleResetPanelSizes = () => {
+    setRightWidth(340);
+    setBottomHeight(280);
+    localStorage.removeItem("pulse_right_width");
+    localStorage.removeItem("pulse_bottom_height");
+    flashImport("Reset panel sizes to defaults");
+  };
+
+  const startResizingBottom = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingBottom(true);
+  };
+
+  useEffect(() => {
+    if (!isResizingBottom) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const editorEl = editorRef.current;
+      if (!editorEl) return;
+      const rect = editorEl.getBoundingClientRect();
+      const newH = rect.bottom - e.clientY;
+      const minH = 100;
+      const maxH = Math.max(140, rect.height - 100);
+      const clamped = Math.max(minH, Math.min(maxH, newH));
+      bottomHeightRef.current = clamped;
+      setBottomHeight(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingBottom(false);
+      localStorage.setItem("pulse_bottom_height", String(bottomHeightRef.current));
+    };
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingBottom]);
+
+  const startResizingRight = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+  };
+
+  useEffect(() => {
+    if (!isResizingRight) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newW = window.innerWidth - e.clientX;
+      const minW = 220;
+      const maxW = Math.min(950, window.innerWidth * 0.65);
+      const clamped = Math.max(minW, Math.min(maxW, newW));
+      rightWidthRef.current = clamped;
+      setRightWidth(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingRight(false);
+      localStorage.setItem("pulse_right_width", String(rightWidthRef.current));
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingRight]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
   const activeEnv = data.environments.find((e) => e.id === data.activeEnvId) ?? null;
@@ -569,6 +699,19 @@ export default function App() {
     flashImport(`Created environment "${name}"`);
   };
 
+  const deleteEnvironment = (id: string) => {
+    const env = data.environments.find((e) => e.id === id);
+    if (!env) return;
+    if (!window.confirm(`Delete environment "${env.name}"?`)) return;
+    const next = data.environments.filter((e) => e.id !== id);
+    patchData((prev) => ({
+      ...prev,
+      environments: next,
+      activeEnvId: prev.activeEnvId === id ? (next[0]?.id ?? null) : prev.activeEnvId,
+    }));
+    flashImport(`Deleted environment "${env.name}"`);
+  };
+
   const newRequest = (collectionId: string, folderId: string | null) => {
     let targetColId = collectionId;
     let createdCol: Collection | null = null;
@@ -817,6 +960,51 @@ export default function App() {
   const envOptions = useMemo(() => data.environments, [data.environments]);
   const snippet = activeTab ? toCurl(activeTab.draft, activeEnv, activeCol) : "";
 
+  const renderSnippet = (isDrawer = false) => (
+    <div className="snippet-container">
+      <div className="snippet-head">
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13 }}>📜</span>
+          <span>Code snippet</span>
+          {isDrawer && (
+            <span
+              style={{
+                fontSize: "10px",
+                color: "var(--accent)",
+                background: "var(--accent-soft)",
+                padding: "1px 6px",
+                borderRadius: 4,
+                fontWeight: 600,
+              }}
+            >
+              Bottom Drawer
+            </span>
+          )}
+        </div>
+        <select defaultValue="curl" className="snippet-lang">
+          <option value="curl">cURL</option>
+        </select>
+        <button className="btn sm ghost" onClick={() => void copyCurl()}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+        {isDrawer && (
+          <button
+            className="btn sm ghost"
+            onClick={() => setSnippetOpen(false)}
+            title="Close snippet drawer"
+            style={{ padding: "2px 6px" }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <pre className="snippet-body">{snippet}</pre>
+    </div>
+  );
+
+  const isRightPanelOpen =
+    viewMode === "studio" && (panelLayout === "response-right" || snippetOpen);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -945,13 +1133,42 @@ export default function App() {
           <button
             className="top-env-eye-btn"
             title={activeEnv ? `Quick Look: ${activeEnv.name} (${activeEnv.variables.length} variables)` : "Quick Look & Manage Environments"}
-            onClick={() => setEnvOpen(true)}
+            onClick={() => {
+              if (activeEnv) setEditTargetEnvId(activeEnv.id);
+              setEnvOpen(true);
+            }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
+          {activeEnv && (
+            <>
+              <button
+                className="top-env-action-btn"
+                title={`Edit environment "${activeEnv.name}"`}
+                onClick={() => {
+                  setEditTargetEnvId(activeEnv.id);
+                  setEnvOpen(true);
+                }}
+                aria-label={`Edit ${activeEnv.name}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+              </button>
+              <button
+                className="top-env-action-btn danger-hover"
+                title={`Delete environment "${activeEnv.name}"`}
+                onClick={() => deleteEnvironment(activeEnv.id)}
+                aria-label={`Delete ${activeEnv.name}`}
+              >
+                ✕
+              </button>
+            </>
+          )}
         </div>
         <div className="top-actions">
           {importNotice && <span className="toast">{importNotice}</span>}
@@ -1117,9 +1334,35 @@ export default function App() {
             }}
           />
           {viewMode === "studio" && (
-            <button className="btn ghost" onClick={() => setSnippetOpen((v) => !v)}>
-              {snippetOpen ? "Hide code" : "Code"}
-            </button>
+            <>
+              <button
+                className="btn ghost sm"
+                onClick={() =>
+                  handleUpdatePanelLayout(
+                    panelLayout === "response-bottom" ? "response-right" : "response-bottom"
+                  )
+                }
+                title={`Studio Workspace Layout: ${
+                  panelLayout === "response-bottom"
+                    ? "Response on Bottom (Click to switch to Side-by-Side)"
+                    : "Response on Right (Click to switch to Response on Bottom)"
+                }`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "5px 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+              >
+                <span>{panelLayout === "response-bottom" ? "◫" : "▥"}</span>
+                <span>{panelLayout === "response-bottom" ? "Bottom" : "Side-by-Side"}</span>
+              </button>
+              <button className="btn ghost" onClick={() => setSnippetOpen((v) => !v)}>
+                {snippetOpen ? "Hide code" : "Code"}
+              </button>
+            </>
           )}
 
           {/* Apple iOS Welcome Tour Button */}
@@ -1163,9 +1406,12 @@ export default function App() {
         </div>
       </header>
       <div
-        className={`layout ${viewMode === "studio" && snippetOpen ? "with-snippet" : ""} ${isResizingSidebar ? "is-resizing" : ""}`}
+        className={`layout ${isRightPanelOpen ? "with-snippet" : ""} ${
+          isResizingSidebar ? "is-resizing" : ""
+        } ${isResizingRight ? "is-resizing-h" : ""} ${isResizingBottom ? "is-resizing-v" : ""}`}
         style={{
           "--sidebar": `${sidebarWidth}px`,
+          "--right-panel": `${rightWidth}px`,
         } as React.CSSProperties}
       >
         {mobileSidebarOpen && (
@@ -1224,8 +1470,16 @@ export default function App() {
           onImportClick={() => setImportOpen(true)}
           onImportCurl={() => setCurlOpen(true)}
           onSelectEnv={(id) => patchData({ activeEnvId: id })}
-          onManageEnv={() => setEnvOpen(true)}
+          onManageEnv={() => {
+            setEditTargetEnvId(null);
+            setEnvOpen(true);
+          }}
           onNewEnv={createNewEnvironment}
+          onEditEnv={(id) => {
+            setEditTargetEnvId(id);
+            setEnvOpen(true);
+          }}
+          onDeleteEnv={deleteEnvironment}
         />
         {viewMode === "dashboard" ? (
           <DashboardView
@@ -1295,37 +1549,71 @@ export default function App() {
                 </div>
               )}
               {activeTab && (
-                <div className="editor">
-                  <RequestPane
-                    draft={activeTab.draft}
-                    sending={Boolean(sending[activeTab.id])}
-                    reqTab={reqTab}
-                    onReqTab={setReqTab}
-                    onChange={onDraftChange}
-                    onSend={() => void sendActive()}
-                    envName={activeEnv?.name ?? null}
-                    env={activeEnv}
-                    collection={activeCol}
-                  />
-                  <ResponsePane
-                    response={responses[activeTab.id] ?? null}
-                    sending={Boolean(sending[activeTab.id])}
-                  />
+                <div className="editor" ref={editorRef}>
+                  <div className="editor-top-area">
+                    <RequestPane
+                      draft={activeTab.draft}
+                      sending={Boolean(sending[activeTab.id])}
+                      reqTab={reqTab}
+                      onReqTab={setReqTab}
+                      onChange={onDraftChange}
+                      onSend={() => void sendActive()}
+                      envName={activeEnv?.name ?? null}
+                      env={activeEnv}
+                      collection={activeCol}
+                    />
+                  </div>
+
+                  {/* Bottom area: Either ResponsePane (if response-bottom) OR Snippet drawer (if response-right and snippetOpen) */}
+                  {(panelLayout === "response-bottom" || snippetOpen) && (
+                    <div
+                      className={`editor-bottom-area ${
+                        panelLayout === "response-right" ? "snippet-drawer-area" : ""
+                      }`}
+                      style={{ height: `${bottomHeight}px` }}
+                    >
+                      <div
+                        className={`panel-resizer-v ${isResizingBottom ? "active" : ""}`}
+                        onMouseDown={startResizingBottom}
+                        title="Drag up or down to resize bottom panel"
+                      />
+                      {panelLayout === "response-bottom" ? (
+                        <ResponsePane
+                          response={responses[activeTab.id] ?? null}
+                          sending={Boolean(sending[activeTab.id])}
+                        />
+                      ) : (
+                        renderSnippet(true)
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </main>
-            {snippetOpen && (
-              <aside className="snippet">
-                <div className="snippet-head">
-                  <span>Code snippet</span>
-                  <select defaultValue="curl" className="snippet-lang">
-                    <option value="curl">cURL</option>
-                  </select>
-                  <button className="btn sm ghost" onClick={() => void copyCurl()}>
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
-                <pre className="snippet-body">{snippet}</pre>
+
+            {/* Right sidebar column: Snippet (if response-bottom and snippetOpen) OR ResponsePane (if response-right) */}
+            {panelLayout === "response-bottom" && snippetOpen && (
+              <aside className="right-sidebar-panel snippet">
+                <div
+                  className={`panel-resizer-h ${isResizingRight ? "active" : ""}`}
+                  onMouseDown={startResizingRight}
+                  title="Drag left or right to resize code snippet panel"
+                />
+                {renderSnippet(false)}
+              </aside>
+            )}
+
+            {panelLayout === "response-right" && (
+              <aside className="right-sidebar-panel">
+                <div
+                  className={`panel-resizer-h ${isResizingRight ? "active" : ""}`}
+                  onMouseDown={startResizingRight}
+                  title="Drag left or right to resize response panel"
+                />
+                <ResponsePane
+                  response={responses[activeTab.id] ?? null}
+                  sending={Boolean(sending[activeTab.id])}
+                />
               </aside>
             )}
           </>
@@ -1371,10 +1659,14 @@ export default function App() {
         <EnvModal
           environments={data.environments}
           activeEnvId={data.activeEnvId}
+          targetEnvId={editTargetEnvId}
           onChange={(environments) => patchData({ environments })}
           onActive={(activeEnvId) => patchData({ activeEnvId })}
           onImportEnv={(file) => void importFile(file, true)}
-          onClose={() => setEnvOpen(false)}
+          onClose={() => {
+            setEnvOpen(false);
+            setEditTargetEnvId(null);
+          }}
         />
       )}
       {curlOpen && (
@@ -1403,6 +1695,9 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         settings={fontSettings}
         onUpdateSettings={handleUpdateFontSettings}
+        panelLayout={panelLayout}
+        onUpdatePanelLayout={handleUpdatePanelLayout}
+        onResetPanelSizes={handleResetPanelSizes}
       />
       <AppleWelcomeModal isOpen={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
       <DownloadModal
