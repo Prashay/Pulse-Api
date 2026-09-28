@@ -6,8 +6,11 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Disable TLS rejection for local and self-signed certificates (standard API testing client behavior)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(express.json({ limit: "12mb" }));
 app.use(express.text({ limit: "12mb", type: ["text/*"] }));
@@ -153,6 +156,20 @@ app.post("/api/proxy", async (req, res) => {
     return;
   }
 
+  // If the request targets Pulse's local mock endpoints (/api/mock/* or /api/health)
+  // but was interpolated with an external host (e.g. {{baseUrl}} when Production Sandbox is active),
+  // route it directly to the local mock engine so mock requests always succeed:
+  if (
+    parsed.pathname === "/api/mock/echo" ||
+    parsed.pathname === "/api/mock/users" ||
+    parsed.pathname === "/api/mock/auth-check" ||
+    parsed.pathname === "/api/health"
+  ) {
+    if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+      url = `http://127.0.0.1:${PORT}${parsed.pathname}${parsed.search}`;
+    }
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number(timeout) || 30000);
 
@@ -161,7 +178,11 @@ app.post("/api/proxy", async (req, res) => {
     for (const [key, value] of Object.entries(headers)) {
       if (!key || value == null) continue;
       if (HOP_BY_HOP.has(key.toLowerCase())) continue;
-      outbound.set(key, String(value));
+      try {
+        outbound.set(key, String(value));
+      } catch {
+        // Skip illegal header format
+      }
     }
 
     const verb = String(method).toUpperCase();

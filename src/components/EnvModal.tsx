@@ -28,6 +28,23 @@ export function EnvModal({
     onActive(env.id);
   };
 
+  const addSampleEnv = () => {
+    const sampleIndex = environments.length + 1;
+    const sample: Environment = {
+      id: uid("env"),
+      name: `Sample Environment ${sampleIndex}`,
+      variables: [
+        kv("baseUrl", "http://127.0.0.1:3001"),
+        kv("apiKey", "pulse_sample_key_9981"),
+        kv("environment", "development"),
+        kv("port", "3001"),
+        kv("timeout", "5000"),
+      ],
+    };
+    onChange([...environments, sample]);
+    onActive(sample.id);
+  };
+
   const update = (id: string, patch: Partial<Environment>) => {
     onChange(environments.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   };
@@ -91,6 +108,17 @@ export function EnvModal({
             )}
           </div>
         ))}
+        {environments.length === 0 && (
+          <div style={{ textAlign: "center", padding: "28px 0", color: "var(--muted)" }}>
+            <p style={{ marginBottom: 12 }}>No environments configured yet.</p>
+            <button
+              className="btn primary sm"
+              onClick={addSampleEnv}
+            >
+              🧪 Create Sample Environment
+            </button>
+          </div>
+        )}
         <div className="modal-actions">
           <input
             ref={fileRef}
@@ -105,6 +133,13 @@ export function EnvModal({
           />
           <button className="btn" onClick={() => fileRef.current?.click()}>
             Import env file
+          </button>
+          <button
+            className="btn"
+            onClick={addSampleEnv}
+            title="Add pre-configured sample environment with baseUrl, apiKey, and timeout"
+          >
+            🧪 Add Sample Env
           </button>
           <button className="btn" onClick={add}>
             New environment

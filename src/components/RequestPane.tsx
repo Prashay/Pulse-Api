@@ -3,6 +3,7 @@ import type { AuthConfig, BodyMode, Collection, Environment, HttpMethod, Request
 import { METHODS, METHOD_COLORS } from "../types";
 import { KeyValueEditor } from "./KeyValueEditor";
 import { extractVariables, interpolate, lookupVariable } from "../request";
+import { parseCurl } from "../curl";
 
 type ReqTab = "params" | "headers" | "body" | "auth";
 
@@ -49,6 +50,22 @@ export function RequestPane(props: Props) {
       }
     };
   }, []);
+
+  const [beautifyStatus, setBeautifyStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const handleBeautifyJson = () => {
+    if (!draft.body || !draft.body.trim()) return;
+    try {
+      const parsed = JSON.parse(draft.body);
+      const pretty = JSON.stringify(parsed, null, 2);
+      props.onChange({ body: pretty, bodyMode: "json" });
+      setBeautifyStatus("success");
+      setTimeout(() => setBeautifyStatus("idle"), 1600);
+    } catch {
+      setBeautifyStatus("error");
+      setTimeout(() => setBeautifyStatus("idle"), 2200);
+    }
+  };
 
   const setAuth = (patch: Partial<AuthConfig>) =>
     props.onChange({ auth: { ...draft.auth, ...patch } });
@@ -186,7 +203,28 @@ export function RequestPane(props: Props) {
               : "{{baseUrl}}/path  or  https://api.example.com/v1"
           }
           value={draft.url}
-          onChange={(e) => props.onChange({ url: e.target.value })}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val.trim().toLowerCase().startsWith("curl ")) {
+              try {
+                const parsed = parseCurl(val);
+                props.onChange({
+                  method: parsed.method,
+                  url: parsed.url,
+                  params: parsed.params,
+                  headers: parsed.headers,
+                  bodyMode: parsed.bodyMode,
+                  body: parsed.body,
+                  auth: parsed.auth,
+                  name: parsed.name,
+                });
+                return;
+              } catch {
+                // Ignore incomplete curl while typing
+              }
+            }
+            props.onChange({ url: val });
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (isWebSocket) handleWsConnect();
@@ -439,23 +477,58 @@ export function RequestPane(props: Props) {
                       {mode}
                     </button>
                   ))}
+                  {(draft.bodyMode === "json" || draft.bodyMode === "raw") && (
+                    <button
+                      className={`btn sm ghost ${beautifyStatus === "success" ? "btn-success" : beautifyStatus === "error" ? "btn-danger" : ""}`}
+                      style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4 }}
+                      onClick={handleBeautifyJson}
+                      title="Beautify / Format JSON payload"
+                    >
+                      <span>✨</span>
+                      <span>
+                        {beautifyStatus === "success"
+                          ? "Beautified!"
+                          : beautifyStatus === "error"
+                          ? "Invalid JSON"
+                          : "Beautify"}
+                      </span>
+                    </button>
+                  )}
                 </div>
                 {draft.bodyMode === "none" ? (
                   <div className="empty">This request does not have a body</div>
                 ) : (
-                  <textarea
-                    className="body-editor"
-                    spellCheck={false}
-                    value={draft.body}
-                    placeholder={
-                      draft.bodyMode === "json"
-                        ? '{\n  "key": "value"\n}'
-                        : draft.bodyMode === "form-urlencoded"
-                        ? "key1=value1\nkey2=value2"
-                        : "Raw request body"
-                    }
-                    onChange={(e) => props.onChange({ body: e.target.value })}
-                  />
+                  <div className="body-editor-container">
+                    {(draft.bodyMode === "json" || draft.bodyMode === "raw") && (
+                      <button
+                        className={`body-corner-beautify-btn ${beautifyStatus === "success" ? "success" : beautifyStatus === "error" ? "error" : ""}`}
+                        onClick={handleBeautifyJson}
+                        title="Beautify / Format JSON (Indents & validates JSON payload)"
+                      >
+                        <span>✨</span>
+                        <span>
+                          {beautifyStatus === "success"
+                            ? "Beautified!"
+                            : beautifyStatus === "error"
+                            ? "Invalid JSON"
+                            : "Beautify JSON"}
+                        </span>
+                      </button>
+                    )}
+                    <textarea
+                      className="body-editor"
+                      spellCheck={false}
+                      value={draft.body}
+                      placeholder={
+                        draft.bodyMode === "json"
+                          ? '{\n  "key": "value"\n}'
+                          : draft.bodyMode === "form-urlencoded"
+                          ? "key1=value1\nkey2=value2"
+                          : "Raw request body"
+                      }
+                      onChange={(e) => props.onChange({ body: e.target.value })}
+                    />
+                  </div>
                 )}
               </>
             )}

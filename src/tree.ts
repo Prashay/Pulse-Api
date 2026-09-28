@@ -139,3 +139,19 @@ export function duplicateNode(node: TreeNode): TreeNode {
   };
   return folder;
 }
+
+export function collectFolders(
+  nodes: TreeNode[],
+  prefix = ""
+): { id: string; name: string }[] {
+  const result: { id: string; name: string }[] = [];
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      const path = prefix ? `${prefix} / ${node.name}` : node.name;
+      result.push({ id: node.id, name: path });
+      result.push(...collectFolders(node.children, path));
+    }
+  }
+  return result;
+}
+

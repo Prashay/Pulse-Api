@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppData,
   Collection,
+  ConsoleLog,
   Environment,
   ProxyResponse,
   RequestItem,
@@ -11,7 +12,13 @@ import type {
 } from "./types";
 import { emptySnapshot, METHOD_COLORS, requestToSnapshot, snapshotToRequest } from "./types";
 import { kv, uid } from "./id";
-import { loadData, pushHistory, saveData } from "./storage";
+import {
+  createSampleCollections,
+  createSampleEnvironments,
+  loadData,
+  pushHistory,
+  saveData,
+} from "./storage";
 import { findRequest, insertNode, removeNode, renameNode, updateRequest } from "./tree";
 import { collectRequests, sendRequest } from "./request";
 import {
@@ -26,11 +33,18 @@ import { RequestPane } from "./components/RequestPane";
 import { ResponsePane } from "./components/ResponsePane";
 import { RunnerModal } from "./components/RunnerModal";
 import { EnvModal } from "./components/EnvModal";
-import { CurlModal } from "./components/CurlModal";
+import { CurlModal, type CurlImportTarget } from "./components/CurlModal";
 import { ImportModal } from "./components/ImportModal";
 import { DashboardView } from "./components/DashboardView";
 import { Footer } from "./components/Footer";
+import { ConsoleDrawer } from "./components/ConsoleDrawer";
 import { AppleWelcomeModal } from "./components/AppleWelcomeModal";
+import {
+  SettingsModal,
+  type FontSettings,
+  FONT_FAMILY_PRESETS,
+  CODE_FONT_PRESETS,
+} from "./components/SettingsModal";
 import { toCurl } from "./curl";
 
 type ReqTab = "params" | "headers" | "body" | "auth";
@@ -74,14 +88,41 @@ function findPath(nodes: TreeNode[], id: string, acc: string[]): string[] | null
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => loadData());
-  const [viewMode, setViewMode] = useState<"dashboard" | "studio">("dashboard");
+  const [viewMode, setViewMode] = useState<"dashboard" | "studio">(() => {
+    const saved = localStorage.getItem("pulse_view_mode");
+    if (saved === "dashboard" || saved === "studio") return saved;
+    return "studio";
+  });
+
+  const switchViewMode = (mode: "dashboard" | "studio") => {
+    setViewMode(mode);
+    localStorage.setItem("pulse_view_mode", mode);
+  };
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("pulse_theme");
     if (saved === "blue" || saved === "dark" || saved === "light") return saved;
     return "blue";
   });
-  const [tabs, setTabs] = useState<TabState[]>(() => [blankTab()]);
+  const [tabs, setTabs] = useState<TabState[]>(() => {
+    const firstCol = data.collections[0];
+    if (firstCol) {
+      const allReqs = collectRequests(firstCol.children);
+      if (allReqs[0]) {
+        return [
+          {
+            id: uid("tab"),
+            requestId: allReqs[0].id,
+            collectionId: firstCol.id,
+            name: allReqs[0].name,
+            dirty: false,
+            draft: requestToSnapshot(allReqs[0]),
+          },
+        ];
+      }
+    }
+    return [blankTab()];
+  });
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
   const [responses, setResponses] = useState<Record<string, ProxyResponse | null>>({});
   const [sending, setSending] = useState<Record<string, boolean>>({});
@@ -98,8 +139,105 @@ export default function App() {
   const [welcomeOpen, setWelcomeOpen] = useState<boolean>(() => {
     return localStorage.getItem("pulse_skip_welcome") !== "true";
   });
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("pulse_sidebar_width");
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 180 && parsed <= 700) return parsed;
+    }
+    return 270;
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fontSettings, setFontSettings] = useState<FontSettings>(() => {
+    const savedSize = localStorage.getItem("pulse_font_size");
+    const savedFamily = localStorage.getItem("pulse_font_family");
+    const savedCodeSize = localStorage.getItem("pulse_code_font_size");
+    const savedCodeFamily = localStorage.getItem("pulse_code_font_family");
+
+    return {
+      fontSize: savedSize ? parseInt(savedSize, 10) || 13 : 13,
+      fontFamily: savedFamily || FONT_FAMILY_PRESETS[0].value,
+      codeFontSize: savedCodeSize ? parseInt(savedCodeSize, 10) || 12 : 12,
+      codeFontFamily: savedCodeFamily || CODE_FONT_PRESETS[0].value,
+    };
+  });
+
+  const handleUpdateFontSettings = (next: FontSettings) => {
+    setFontSettings(next);
+    localStorage.setItem("pulse_font_size", String(next.fontSize));
+    localStorage.setItem("pulse_font_family", next.fontFamily);
+    localStorage.setItem("pulse_code_font_size", String(next.codeFontSize));
+    localStorage.setItem("pulse_code_font_family", next.codeFontFamily);
+  };
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const [consoleHeight, setConsoleHeight] = useState<number>(() => {
+    const saved = localStorage.getItem("pulse_console_height");
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 160 && parsed <= 600) return parsed;
+    }
+    return 260;
+  });
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>(() => [
+    {
+      id: uid("clog"),
+      timestamp: Date.now(),
+      type: "info",
+      title: "Pulse API Studio v1.0.0 Engine Ready",
+    },
+    {
+      id: uid("clog"),
+      timestamp: Date.now() + 5,
+      type: "info",
+      title: "Local API Proxy listening at http://127.0.0.1:3001",
+    },
+  ]);
+
+  const addConsoleLog = (log: ConsoleLog) => {
+    setConsoleLogs((prev) => [...prev.slice(-350), log]);
+  };
+
   const fileRef = useRef<HTMLInputElement>(null);
   const importDropdownRef = useRef<HTMLDivElement>(null);
+
+  const startResizingSidebar = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+  };
+
+  const resetSidebarWidth = () => {
+    setSidebarWidth(270);
+    localStorage.setItem("pulse_sidebar_width", "270");
+  };
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const minW = 200;
+      const maxW = Math.min(650, window.innerWidth * 0.55);
+      const newWidth = Math.max(minW, Math.min(maxW, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      localStorage.setItem("pulse_sidebar_width", String(sidebarWidth));
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingSidebar, sidebarWidth]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
   const activeEnv = data.environments.find((e) => e.id === data.activeEnvId) ?? null;
@@ -115,14 +253,28 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    document.documentElement.style.setProperty("--app-font-size", `${fontSettings.fontSize}px`);
+    document.documentElement.style.setProperty("--font", fontSettings.fontFamily);
+    document.documentElement.style.setProperty("--app-code-font-size", `${fontSettings.codeFontSize}px`);
+    document.documentElement.style.setProperty("--mono", fontSettings.codeFontFamily);
+  }, [fontSettings]);
+
+  useEffect(() => {
     if (!importDropdownOpen) return;
     const onMouseDown = (e: MouseEvent) => {
       if (importDropdownRef.current && !importDropdownRef.current.contains(e.target as Node)) {
         setImportDropdownOpen(false);
       }
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setImportDropdownOpen(false);
+    };
     window.addEventListener("mousedown", onMouseDown);
-    return () => window.removeEventListener("mousedown", onMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [importDropdownOpen]);
 
   useEffect(() => {
@@ -140,7 +292,7 @@ export default function App() {
   };
 
   const openRequest = (collectionId: string, requestId: string) => {
-    setViewMode("studio");
+    switchViewMode("studio");
     const existing = tabs.find((t) => t.requestId === requestId);
     if (existing) {
       setActiveTabId(existing.id);
@@ -263,7 +415,31 @@ export default function App() {
           error: resp.error,
         }),
       }));
+
+      // Log request & response telemetry to console
+      const reqHeaders: Record<string, string> = {};
+      for (const h of activeTab.draft.headers) {
+        if (h.enabled && h.key) reqHeaders[h.key] = h.value;
+      }
+      addConsoleLog({
+        id: uid("clog"),
+        timestamp: Date.now(),
+        type: resp.ok ? "network" : "error",
+        title: `${activeTab.draft.method} ${activeTab.draft.url || "request"}`,
+        method: activeTab.draft.method,
+        url: activeTab.draft.url,
+        status: resp.status,
+        statusText: resp.statusText,
+        time: resp.time,
+        size: resp.size,
+        requestHeaders: reqHeaders,
+        requestBody: activeTab.draft.body,
+        responseHeaders: resp.headers,
+        responseBody: resp.body,
+        curl: toCurl(activeTab.draft, activeEnv, activeCol),
+      });
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       setResponses((r) => ({
         ...r,
         [tabId]: {
@@ -272,11 +448,22 @@ export default function App() {
           status: 0,
           statusText: "Error",
           headers: {},
-          body: err instanceof Error ? err.message : String(err),
+          body: errMsg,
           time: 0,
           size: 0,
         },
       }));
+      addConsoleLog({
+        id: uid("clog"),
+        timestamp: Date.now(),
+        type: "error",
+        title: `Failed: ${activeTab.draft.method} ${activeTab.draft.url || "request"}`,
+        method: activeTab.draft.method,
+        url: activeTab.draft.url,
+        status: 0,
+        statusText: "Error",
+        responseBody: errMsg,
+      });
     } finally {
       setSending((s) => ({ ...s, [tabId]: false }));
     }
@@ -350,7 +537,7 @@ export default function App() {
     };
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(tab.id);
-    setViewMode("studio");
+    switchViewMode("studio");
   };
 
   const createNewEnvironment = () => {
@@ -406,13 +593,28 @@ export default function App() {
   };
 
   const newFolder = (collectionId: string, folderId: string | null = null) => {
+    let targetColId = collectionId;
+    let createdCol: Collection | null = null;
+    if (!targetColId || !data.collections.some((c) => c.id === targetColId)) {
+      if (data.collections.length === 0) {
+        createdCol = { id: uid("col"), name: "Default Collection", description: "", children: [] };
+        targetColId = createdCol.id;
+      } else {
+        targetColId = data.collections[0].id;
+      }
+    }
+
     const name = window.prompt("Folder name", "New Folder");
-    if (!name) return;
-    const folder: TreeNode = { id: uid("fld"), type: "folder", name, children: [] };
-    patchData((prev) => ({
-      ...prev,
-      collections: insertNode(prev.collections, collectionId, folderId, folder),
-    }));
+    if (!name || !name.trim()) return;
+    const folder: TreeNode = { id: uid("fld"), type: "folder", name: name.trim(), children: [] };
+    patchData((prev) => {
+      const base = createdCol ? [...prev.collections, createdCol] : prev.collections;
+      return {
+        ...prev,
+        collections: insertNode(base, targetColId, folderId, folder),
+      };
+    });
+    flashImport(`Created folder "${name.trim()}"`);
   };
 
   const renameCollection = (id: string) => {
@@ -518,19 +720,75 @@ export default function App() {
     }
   };
 
-  const importCurl = (snap: RequestSnapshot) => {
-    const tab: TabState = {
-      id: uid("tab"),
-      requestId: null,
-      collectionId: data.collections[0]?.id ?? null,
-      name: snap.name,
-      dirty: true,
-      draft: snap,
-    };
-    setTabs((prev) => [...prev, tab]);
-    setActiveTabId(tab.id);
-    setCurlOpen(false);
-    flashImport(`Imported cURL as "${snap.name}" — Save to keep it`);
+  const importCurl = (snap: RequestSnapshot, target: CurlImportTarget) => {
+    let targetColId: string | null = null;
+    let createdCol: Collection | null = null;
+
+    if (target.mode === "existing") {
+      targetColId = target.collectionId || data.collections[0]?.id || null;
+      if (!targetColId) {
+        createdCol = {
+          id: uid("col"),
+          name: "My Collection",
+          description: "",
+          children: [],
+        };
+        targetColId = createdCol.id;
+      }
+    } else if (target.mode === "new") {
+      const colName = target.newCollectionName?.trim() || "cURL Collection";
+      createdCol = {
+        id: uid("col"),
+        name: colName,
+        description: "",
+        children: [],
+      };
+      targetColId = createdCol.id;
+    }
+
+    if (targetColId && target.mode !== "scratch") {
+      const req: RequestItem = snapshotToRequest(uid("req"), snap);
+      patchData((prev) => {
+        const base = createdCol ? [...prev.collections, createdCol] : prev.collections;
+        return {
+          ...prev,
+          collections: insertNode(base, targetColId!, target.folderId ?? null, req),
+        };
+      });
+
+      const tab: TabState = {
+        id: uid("tab"),
+        requestId: req.id,
+        collectionId: targetColId,
+        name: req.name,
+        dirty: false,
+        draft: snap,
+      };
+
+      setTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      switchViewMode("studio");
+      setCurlOpen(false);
+
+      const colName = createdCol
+        ? createdCol.name
+        : data.collections.find((c) => c.id === targetColId)?.name || "Collection";
+      flashImport(`Saved cURL request "${req.name}" to "${colName}"`);
+    } else {
+      const tab: TabState = {
+        id: uid("tab"),
+        requestId: null,
+        collectionId: data.collections[0]?.id ?? null,
+        name: snap.name,
+        dirty: true,
+        draft: snap,
+      };
+      setTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      switchViewMode("studio");
+      setCurlOpen(false);
+      flashImport(`Opened cURL request "${snap.name}" in scratchpad`);
+    }
   };
 
   const copyCurl = async () => {
@@ -565,8 +823,38 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const loadSampleTestSuite = () => {
+    const sampleCols = createSampleCollections();
+    const sampleEnvs = createSampleEnvironments();
+    patchData((prev) => {
+      const existingColNames = new Set(prev.collections.map((c) => c.name.toLowerCase()));
+      const newCols = sampleCols.filter((c) => !existingColNames.has(c.name.toLowerCase()));
+
+      const existingEnvNames = new Set(prev.environments.map((e) => e.name.toLowerCase()));
+      const newEnvs = sampleEnvs.filter((e) => !existingEnvNames.has(e.name.toLowerCase()));
+
+      const updatedEnvs = [...prev.environments, ...newEnvs];
+      return {
+        ...prev,
+        collections: [...prev.collections, ...newCols],
+        environments: updatedEnvs,
+        activeEnvId: prev.activeEnvId || updatedEnvs[0]?.id || null,
+      };
+    });
+    flashImport("Loaded sample test collections & environments!");
+  };
+
+  useEffect(() => {
+    if (data.collections.length === 0 && data.environments.length === 0) {
+      loadSampleTestSuite();
+    }
+  }, []);
+
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={{ "--console-height": consoleOpen ? `${consoleHeight}px` : "0px" } as React.CSSProperties}
+    >
       <header className="topbar">
         <button
           className="mobile-menu-btn"
@@ -581,7 +869,7 @@ export default function App() {
           </svg>
         </button>
 
-        <div className="brand" onClick={() => setViewMode("dashboard")} style={{ cursor: "pointer" }}>
+        <div className="brand" onClick={() => switchViewMode("studio")} style={{ cursor: "pointer" }}>
           <img src="./logo.png" alt="Pulse API Studio" className="brand-logo-img" />
           <div style={{ display: "flex", flexDirection: "column" }}>
             <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em" }}>Pulse API Studio</span>
@@ -591,8 +879,17 @@ export default function App() {
 
         <div className="view-mode-tabs">
           <button
+            className={`view-tab ${viewMode === "studio" ? "active" : ""}`}
+            onClick={() => switchViewMode("studio")}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            Studio ({tabs.length})
+          </button>
+          <button
             className={`view-tab ${viewMode === "dashboard" ? "active" : ""}`}
-            onClick={() => setViewMode("dashboard")}
+            onClick={() => switchViewMode("dashboard")}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -601,15 +898,6 @@ export default function App() {
               <rect x="3" y="14" width="7" height="7" rx="1" />
             </svg>
             Dashboard
-          </button>
-          <button
-            className={`view-tab ${viewMode === "studio" ? "active" : ""}`}
-            onClick={() => setViewMode("studio")}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            Studio ({tabs.length})
           </button>
         </div>
 
@@ -775,6 +1063,28 @@ export default function App() {
               <option value="light">Light</option>
             </select>
           </div>
+
+          {/* Settings Button: Font Size & Font Family Controls */}
+          <button
+            className="top-settings-btn"
+            onClick={() => setSettingsOpen(true)}
+            title="Display & Typography Settings (Adjust font size & family)"
+            aria-label="Display & Typography Settings"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
           <input
             ref={fileRef}
             className="hidden-file"
@@ -837,7 +1147,12 @@ export default function App() {
           </a>
         </div>
       </header>
-      <div className={`layout ${viewMode === "studio" && snippetOpen ? "with-snippet" : ""}`}>
+      <div
+        className={`layout ${viewMode === "studio" && snippetOpen ? "with-snippet" : ""} ${isResizingSidebar ? "is-resizing" : ""}`}
+        style={{
+          "--sidebar": `${sidebarWidth}px`,
+        } as React.CSSProperties}
+      >
         {mobileSidebarOpen && (
           <div
             className="mobile-sidebar-backdrop"
@@ -850,13 +1165,16 @@ export default function App() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           viewMode={viewMode}
           onSelectDashboard={() => {
-            setViewMode("dashboard");
+            switchViewMode("dashboard");
             setMobileSidebarOpen(false);
           }}
           collections={data.collections}
           environments={data.environments}
           activeEnvId={data.activeEnvId}
           activeRequestId={activeTab?.requestId ?? null}
+          isResizing={isResizingSidebar}
+          onStartResize={startResizingSidebar}
+          onResetResize={resetSidebarWidth}
           onOpenRequest={(cId, rId) => {
             openRequest(cId, rId);
             setMobileSidebarOpen(false);
@@ -905,12 +1223,13 @@ export default function App() {
             onRunCollection={(col) => setRunnerCol(col)}
             onNewRequest={() => {
               newRequest(data.collections[0]?.id || "", null);
-              setViewMode("studio");
+              switchViewMode("studio");
             }}
             onImportClick={() => setImportOpen(true)}
             onManageEnv={() => setEnvOpen(true)}
             onClearHistory={() => patchData({ history: [] })}
-            onSwitchToStudio={() => setViewMode("studio")}
+            onSwitchToStudio={() => switchViewMode("studio")}
+            onLoadSamples={loadSampleTestSuite}
           />
         ) : (
           <>
@@ -996,12 +1315,31 @@ export default function App() {
           </>
         )}
       </div>
+      <ConsoleDrawer
+        isOpen={consoleOpen}
+        onClose={() => setConsoleOpen(false)}
+        logs={consoleLogs}
+        onClear={() => setConsoleLogs([])}
+        environments={data.environments}
+        activeEnv={activeEnv}
+        collections={data.collections}
+        height={consoleHeight}
+        onHeightChange={(h) => {
+          setConsoleHeight(h);
+          localStorage.setItem("pulse_console_height", String(h));
+        }}
+        onLoadSamples={loadSampleTestSuite}
+      />
       <Footer
         activeEnvName={activeEnv?.name ?? null}
         collectionsCount={data.collections.length}
         requestsCount={totalRequests}
         viewMode={viewMode}
-        onSwitchView={setViewMode}
+        onSwitchView={switchViewMode}
+        consoleOpen={consoleOpen}
+        onToggleConsole={() => setConsoleOpen((v) => !v)}
+        consoleLogsCount={consoleLogs.length}
+        consoleErrorCount={consoleLogs.filter((l) => l.type === "error" || (l.status && l.status >= 400)).length}
       />
       {runnerCol && (
         <RunnerModal
@@ -1023,7 +1361,13 @@ export default function App() {
           onClose={() => setEnvOpen(false)}
         />
       )}
-      {curlOpen && <CurlModal onImport={importCurl} onClose={() => setCurlOpen(false)} />}
+      {curlOpen && (
+        <CurlModal
+          collections={data.collections}
+          onImport={importCurl}
+          onClose={() => setCurlOpen(false)}
+        />
+      )}
       {importOpen && (
         <ImportModal
           onImportSuccess={({ collections, environments, message }) => {
@@ -1038,6 +1382,12 @@ export default function App() {
           onClose={() => setImportOpen(false)}
         />
       )}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={fontSettings}
+        onUpdateSettings={handleUpdateFontSettings}
+      />
       <AppleWelcomeModal isOpen={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
     </div>
   );

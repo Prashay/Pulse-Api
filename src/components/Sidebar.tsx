@@ -27,6 +27,9 @@ interface Props {
   onNewEnv: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  isResizing?: boolean;
+  onStartResize?: (e: React.MouseEvent) => void;
+  onResetResize?: () => void;
 }
 
 export function Sidebar(props: Props) {
@@ -34,12 +37,37 @@ export function Sidebar(props: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [colOpen, setColOpen] = useState(true);
   const [envOpen, setEnvOpen] = useState(true);
+  const [colSortOrder, setColSortOrder] = useState<"default" | "asc" | "desc">(() => {
+    const saved = localStorage.getItem("pulse_col_sort");
+    if (saved === "asc" || saved === "desc" || saved === "default") return saved;
+    return "default";
+  });
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusFilter, setPlusFilter] = useState("");
   const plusWrapperRef = useRef<HTMLDivElement>(null);
   const plusSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAddFolderPrompt = () => {
+    if (props.collections.length === 0) {
+      props.onNewFolder("", null);
+      return;
+    }
+    if (props.collections.length === 1) {
+      props.onNewFolder(props.collections[0].id, null);
+      return;
+    }
+    const colList = props.collections.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+    const choice = window.prompt(
+      `Add folder to which collection?\n${colList}\n\nEnter number (1-${props.collections.length}):`,
+      "1"
+    );
+    if (!choice) return;
+    const idx = parseInt(choice, 10) - 1;
+    const targetCol = props.collections[idx] || props.collections[0];
+    props.onNewFolder(targetCol.id, null);
+  };
 
   useEffect(() => {
     if (!plusMenuOpen) return;
@@ -125,6 +153,19 @@ export function Sidebar(props: Props) {
         },
       },
       {
+        id: "folder",
+        category: "organize" as const,
+        title: "Collection Folder",
+        desc: "Organize endpoints into categorized subfolders",
+        icon: "📂",
+        badge: "FOLDER",
+        badgeClass: "badge-folder",
+        action: () => {
+          setPlusMenuOpen(false);
+          handleAddFolderPrompt();
+        },
+      },
+      {
         id: "environment",
         category: "organize" as const,
         title: "Environment",
@@ -199,14 +240,23 @@ export function Sidebar(props: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return props.collections;
-    return props.collections
-      .map((col) => ({
-        ...col,
-        children: filterNodes(col.children, q),
-      }))
-      .filter((col) => col.name.toLowerCase().includes(q) || col.children.length > 0);
-  }, [props.collections, query]);
+    let base = props.collections;
+    if (q) {
+      base = base
+        .map((col) => ({
+          ...col,
+          children: filterNodes(col.children, q),
+        }))
+        .filter((col) => col.name.toLowerCase().includes(q) || col.children.length > 0);
+    }
+    if (colSortOrder === "asc") {
+      return [...base].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    }
+    if (colSortOrder === "desc") {
+      return [...base].sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base" }));
+    }
+    return base;
+  }, [props.collections, query, colSortOrder]);
 
   return (
     <aside className={`sidebar ${props.mobileOpen ? "mobile-open" : ""}`} onClick={() => setMenu(null)}>
@@ -343,38 +393,117 @@ export function Sidebar(props: Props) {
           </div>
         )}
 
-        <button className="section-title" onClick={() => setColOpen((v) => !v)}>
-          <span className="chev">{colOpen ? "v" : ">"}</span>
-          COLLECTIONS
-        </button>
+        <div className="section-header-row">
+          <button className="section-title" style={{ margin: 0 }} onClick={() => setColOpen((v) => !v)}>
+            <span className="chev">{colOpen ? "v" : ">"}</span>
+            COLLECTIONS
+            <span className="section-count">{props.collections.length}</span>
+          </button>
+          <div className="section-header-actions">
+            <button
+              className={`header-action-btn col-sort-btn ${colSortOrder !== "default" ? "active" : ""}`}
+              title={`Sort Collections: ${colSortOrder === "asc" ? "A to Z (Click for Z-A)" : colSortOrder === "desc" ? "Z to A (Click to Reset)" : "Default (Click to Sort A-Z)"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                const nextOrder: "default" | "asc" | "desc" =
+                  colSortOrder === "default" ? "asc" : colSortOrder === "asc" ? "desc" : "default";
+                setColSortOrder(nextOrder);
+                localStorage.setItem("pulse_col_sort", nextOrder);
+              }}
+              aria-label="Sort Collections"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M3 6h18M6 12h12m-9 6h6" />
+              </svg>
+              {colSortOrder !== "default" && (
+                <span className="col-sort-badge">{colSortOrder === "asc" ? "A-Z" : "Z-A"}</span>
+              )}
+            </button>
+            <button
+              className="header-action-btn"
+              title="Add New Collection Folder (+Folder)"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddFolderPrompt();
+              }}
+              aria-label="Add Collection Folder"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                <line x1="12" y1="11" x2="12" y2="17"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
+              </svg>
+            </button>
+            <button
+              className="header-action-btn"
+              title="Add New Collection (+Collection)"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onNewCollection();
+              }}
+              aria-label="Add Collection"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
         {colOpen && (
           <>
-            {filtered.length === 0 && <div className="empty">No collections</div>}
+            {filtered.length === 0 && (
+              <div className="empty" style={{ padding: "16px 8px" }}>
+                <div>No collections yet</div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "center" }}>
+                  <button className="btn sm primary" onClick={props.onNewCollection}>+ Collection</button>
+                  <button className="btn sm" onClick={handleAddFolderPrompt}>+ Folder</button>
+                </div>
+              </div>
+            )}
             {filtered.map((col) => (
               <div key={col.id} className="tree-col">
-                <div className="col-title">
+                <div
+                  className="col-title"
+                  onClick={() => setCollapsed((s) => ({ ...s, [col.id]: !s[col.id] }))}
+                >
                   <button
                     className="icon-btn chev"
-                    onClick={() => setCollapsed((s) => ({ ...s, [col.id]: !s[col.id] }))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCollapsed((s) => ({ ...s, [col.id]: !s[col.id] }));
+                    }}
                   >
                     {collapsed[col.id] ? ">" : "v"}
                   </button>
-                  <span
-                    className="grow"
-                    onClick={() => setCollapsed((s) => ({ ...s, [col.id]: !s[col.id] }))}
-                  >
-                    {col.name}
-                  </span>
-                  <button
-                    className="icon-btn"
-                    title="More"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenu({ id: col.id, x: e.clientX, y: e.clientY });
-                    }}
-                  >
-                    ...
-                  </button>
+                  <span className="col-folder-icon">📁</span>
+                  <span className="grow">{col.name}</span>
+                  <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="tree-action-btn"
+                      title="Add Folder inside this collection"
+                      onClick={() => props.onNewFolder(col.id, null)}
+                    >
+                      +📁
+                    </button>
+                    <button
+                      className="tree-action-btn"
+                      title="Add Request inside this collection"
+                      onClick={() => props.onNewRequest(col.id, null)}
+                    >
+                      +
+                    </button>
+                    <button
+                      className="tree-action-btn"
+                      title="More options"
+                      onClick={(e) => {
+                        setMenu({ id: col.id, x: e.clientX, y: e.clientY });
+                      }}
+                    >
+                      •••
+                    </button>
+                  </div>
                 </div>
                 {!collapsed[col.id] && (
                   <NodeList
@@ -385,6 +514,7 @@ export function Sidebar(props: Props) {
                     setCollapsed={setCollapsed}
                     onOpenRequest={props.onOpenRequest}
                     onNewRequest={props.onNewRequest}
+                    onNewFolder={props.onNewFolder}
                     onRenameNode={props.onRenameNode}
                     onDeleteNode={props.onDeleteNode}
                   />
@@ -394,7 +524,7 @@ export function Sidebar(props: Props) {
           </>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 4, marginTop: 10 }}>
           <button className="section-title env-section" style={{ flex: 1, marginBottom: 0 }} onClick={() => setEnvOpen((v) => !v)}>
             <span className="chev">{envOpen ? "v" : ">"}</span>
             ENVIRONMENTS
@@ -521,6 +651,17 @@ export function Sidebar(props: Props) {
           </button>
         </div>
       )}
+
+      {props.onStartResize && (
+        <div
+          className={`sidebar-resizer ${props.isResizing ? "active" : ""}`}
+          onMouseDown={props.onStartResize}
+          onDoubleClick={props.onResetResize}
+          title="Drag to resize sidebar (double-click to reset)"
+          role="separator"
+          aria-orientation="vertical"
+        />
+      )}
     </aside>
   );
 }
@@ -548,6 +689,7 @@ function NodeList(props: {
   setCollapsed: Dispatch<SetStateAction<Record<string, boolean>>>;
   onOpenRequest: (collectionId: string, requestId: string) => void;
   onNewRequest: (collectionId: string, folderId: string | null) => void;
+  onNewFolder: (collectionId: string, folderId: string | null) => void;
   onRenameNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
 }) {
@@ -556,15 +698,55 @@ function NodeList(props: {
       {props.nodes.map((node) =>
         node.type === "folder" ? (
           <div key={node.id} className="tree-folder">
-            <div className="tree-item folder-item">
+            <div
+              className="tree-item folder-item"
+              onClick={() => props.setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }))}
+            >
               <button
                 className="icon-btn chev"
-                onClick={() => props.setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }))}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.setCollapsed((s) => ({ ...s, [node.id]: !s[node.id] }));
+                }}
               >
                 {props.collapsed[node.id] ? ">" : "v"}
               </button>
-              <span className="folder-ico">[]</span>
+              <span className="folder-ico">📂</span>
               <span className="name">{node.name}</span>
+              <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="tree-action-btn"
+                  title="Add Subfolder inside this folder"
+                  onClick={() => props.onNewFolder(props.collectionId, node.id)}
+                >
+                  +📁
+                </button>
+                <button
+                  className="tree-action-btn"
+                  title="Add Request inside this folder"
+                  onClick={() => props.onNewRequest(props.collectionId, node.id)}
+                >
+                  +
+                </button>
+                <button
+                  className="tree-action-btn"
+                  title="Rename folder"
+                  onClick={() => props.onRenameNode(node.id)}
+                >
+                  ✏️
+                </button>
+                <button
+                  className="tree-action-btn danger-hover"
+                  title="Delete folder"
+                  onClick={() => {
+                    if (window.confirm(`Delete folder "${node.name}" and all its contents?`)) {
+                      props.onDeleteNode(node.id);
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             {!props.collapsed[node.id] && <NodeList {...props} nodes={node.children} />}
           </div>
@@ -577,6 +759,22 @@ function NodeList(props: {
           >
             <span className={`method ${METHOD_COLORS[node.method]}`}>{shortMethod(node.method)}</span>
             <span className="name">{node.name}</span>
+            <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="tree-action-btn"
+                title="Rename request"
+                onClick={() => props.onRenameNode(node.id)}
+              >
+                ✏️
+              </button>
+              <button
+                className="tree-action-btn danger-hover"
+                title="Delete request"
+                onClick={() => props.onDeleteNode(node.id)}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )
       )}

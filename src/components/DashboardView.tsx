@@ -16,6 +16,7 @@ interface Props {
   onManageEnv: () => void;
   onClearHistory: () => void;
   onSwitchToStudio: () => void;
+  onLoadSamples?: () => void;
 }
 
 export function DashboardView({
@@ -31,6 +32,7 @@ export function DashboardView({
   onManageEnv,
   onClearHistory,
   onSwitchToStudio,
+  onLoadSamples,
 }: Props) {
   const [proxyPing, setProxyPing] = useState<{ ok: boolean; time: number } | null>(null);
   const [mockLoading, setMockLoading] = useState<string | null>(null);
@@ -148,6 +150,16 @@ export function DashboardView({
             <span>+</span>
             <span>New Request</span>
           </button>
+          {onLoadSamples && (
+            <button
+              className="btn dash-action-btn"
+              onClick={onLoadSamples}
+              title="Load pre-configured sample test collections & environments"
+            >
+              <span>🧪</span>
+              <span>Sample Test Suite</span>
+            </button>
+          )}
           <button className="btn dash-action-btn" onClick={onSwitchToStudio}>
             <span>⚡</span>
             <span>Request Studio</span>
@@ -263,6 +275,16 @@ export function DashboardView({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
+                {onLoadSamples && (
+                  <button
+                    className="btn sm"
+                    onClick={onLoadSamples}
+                    title="Load pre-configured sample test collections and environments"
+                    style={{ display: "flex", alignItems: "center", gap: 4 }}
+                  >
+                    <span>🧪</span> Samples
+                  </button>
+                )}
                 <button
                   className="btn sm"
                   onClick={onImportClick}
@@ -280,7 +302,12 @@ export function DashboardView({
             <div className="dash-collections-list">
               {collections.length === 0 ? (
                 <div className="empty-dash">
-                  No collections found. Click "Import Docs / JSON" to load collections or parse README.md / doc files.
+                  <p>No collections found in workspace.</p>
+                  {onLoadSamples && (
+                    <button className="btn primary sm" onClick={onLoadSamples} style={{ marginTop: 8 }}>
+                      🧪 Load Sample Test Suite & Environments
+                    </button>
+                  )}
                 </div>
               ) : (
                 collections.map((col) => {

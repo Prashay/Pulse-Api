@@ -6,6 +6,10 @@ interface FooterProps {
   requestsCount: number;
   viewMode: "dashboard" | "studio";
   onSwitchView?: (mode: "dashboard" | "studio") => void;
+  consoleOpen?: boolean;
+  onToggleConsole?: () => void;
+  consoleLogsCount?: number;
+  consoleErrorCount?: number;
 }
 
 export const Footer: FC<FooterProps> = ({
@@ -14,6 +18,10 @@ export const Footer: FC<FooterProps> = ({
   requestsCount,
   viewMode,
   onSwitchView,
+  consoleOpen,
+  onToggleConsole,
+  consoleLogsCount = 0,
+  consoleErrorCount = 0,
 }) => {
   const currentYear = new Date().getFullYear();
 
@@ -34,6 +42,24 @@ export const Footer: FC<FooterProps> = ({
           </svg>
           <span>{activeEnvName || "No Environment"}</span>
         </span>
+
+        {onToggleConsole && (
+          <button
+            className={`footer-console-btn ${consoleOpen ? "active" : ""}`}
+            onClick={onToggleConsole}
+            title="Toggle Pulse Console and Terminal (Network Logs, Details, CLI)"
+            aria-label="Toggle Pulse Console"
+          >
+            <span className="footer-console-glyph">&gt;_</span>
+            <span>Console</span>
+            {consoleLogsCount > 0 && (
+              <span className="footer-console-count">{consoleLogsCount}</span>
+            )}
+            {consoleErrorCount > 0 && (
+              <span className="footer-console-err-count">{consoleErrorCount}</span>
+            )}
+          </button>
+        )}
 
         {onSwitchView && (
           <button

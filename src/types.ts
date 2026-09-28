@@ -108,6 +108,24 @@ export interface ProxyResponse {
   size: number;
 }
 
+export interface ConsoleLog {
+  id: string;
+  timestamp: number;
+  type: "network" | "log" | "info" | "warn" | "error";
+  title: string;
+  method?: HttpMethod;
+  url?: string;
+  status?: number;
+  statusText?: string;
+  time?: number;
+  size?: number;
+  requestHeaders?: Record<string, string>;
+  requestBody?: string;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
+  curl?: string;
+}
+
 export interface RunResult {
   requestId: string;
   name: string;
