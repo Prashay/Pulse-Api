@@ -249,7 +249,7 @@ export function RequestPane(props: Props) {
 
   return (
     <div className="pane request-pane">
-      <div className="url-bar">
+      <div className="urlbar url-bar">
         <select
           className={`method-select ${METHOD_COLORS[draft.method]}`}
           value={draft.method}

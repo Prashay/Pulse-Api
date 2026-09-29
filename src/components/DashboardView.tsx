@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Collection, Environment, HistoryEntry } from "../types";
 import { METHOD_COLORS } from "../types";
-import { collectRequests } from "../request";
+import { collectRequests, getProxyBaseUrl } from "../request";
 
 interface Props {
   collections: Collection[];
@@ -67,7 +67,14 @@ export function DashboardView({
     const checkPing = async () => {
       const start = Date.now();
       try {
-        const res = await fetch("/api/health");
+        if (typeof window !== "undefined" && window.pulseDesktop?.checkHealth) {
+          const health = await window.pulseDesktop.checkHealth();
+          if (health?.ok && !unmounted) {
+            setProxyPing({ ok: true, time: Date.now() - start });
+            return;
+          }
+        }
+        const res = await fetch(`${getProxyBaseUrl()}/api/health`);
         if (res.ok && !unmounted) {
           setProxyPing({ ok: true, time: Date.now() - start });
         } else if (!unmounted) {
@@ -89,10 +96,9 @@ export function DashboardView({
     setMockLoading(endpoint);
     const start = Date.now();
     try {
-      const res = await fetch(`/api/proxy`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let data: any;
+      if (typeof window !== "undefined" && window.pulseDesktop?.proxyRequest) {
+        data = await window.pulseDesktop.proxyRequest({
           method,
           url: `http://127.0.0.1:3001${endpoint}`,
           headers: endpoint.includes("auth")
@@ -100,9 +106,23 @@ export function DashboardView({
             : {},
           body: method === "POST" ? JSON.stringify({ ping: "dashboard", now: Date.now() }) : null,
           timeout: 5000,
-        }),
-      });
-      const data = await res.json();
+        });
+      } else {
+        const res = await fetch(`${getProxyBaseUrl()}/api/proxy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method,
+            url: `http://127.0.0.1:3001${endpoint}`,
+            headers: endpoint.includes("auth")
+              ? { Authorization: "Bearer pulse-demo-token" }
+              : {},
+            body: method === "POST" ? JSON.stringify({ ping: "dashboard", now: Date.now() }) : null,
+            timeout: 5000,
+          }),
+        });
+        data = await res.json();
+      }
       setMockOutput({
         endpoint,
         status: data.status,

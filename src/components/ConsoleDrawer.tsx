@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import type { Collection, ConsoleLog, Environment } from "../types";
 import { METHOD_COLORS } from "../types";
+import { getProxyBaseUrl } from "../request";
 
 interface Props {
   isOpen: boolean;
@@ -170,12 +171,17 @@ export const ConsoleDrawer: FC<Props> = ({
 
       case "ping":
         try {
-          const res = await fetch("http://127.0.0.1:3001/api/health");
-          if (res.ok) {
-            const data = await res.json();
-            outText = `[PONG] Proxy Engine is ONLINE: ${JSON.stringify(data)}`;
+          if (typeof window !== "undefined" && window.pulseDesktop?.checkHealth) {
+            const health = await window.pulseDesktop.checkHealth();
+            outText = `[PONG] Native Desktop Proxy Engine is ONLINE: ${JSON.stringify(health)}`;
           } else {
-            outText = `[PONG] Server responded with status ${res.status}`;
+            const res = await fetch(`${getProxyBaseUrl()}/api/health`);
+            if (res.ok) {
+              const data = await res.json();
+              outText = `[PONG] Proxy Engine is ONLINE: ${JSON.stringify(data)}`;
+            } else {
+              outText = `[PONG] Server responded with status ${res.status}`;
+            }
           }
         } catch (e) {
           isErr = true;
@@ -225,13 +231,18 @@ export const ConsoleDrawer: FC<Props> = ({
           outText = `Sending GET ${targetUrl}...`;
           try {
             const t0 = performance.now();
-            const res = await fetch("http://127.0.0.1:3001/api/proxy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ method: "GET", url: targetUrl, headers: {} }),
-            });
+            let json: any;
+            if (typeof window !== "undefined" && window.pulseDesktop?.proxyRequest) {
+              json = await window.pulseDesktop.proxyRequest({ method: "GET", url: targetUrl, headers: {} });
+            } else {
+              const res = await fetch(`${getProxyBaseUrl()}/api/proxy`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ method: "GET", url: targetUrl, headers: {} }),
+              });
+              json = await res.json();
+            }
             const delta = Math.round(performance.now() - t0);
-            const json = await res.json();
             outText = `[${json.status} ${json.statusText || ""}] in ${delta}ms\n` +
               (typeof json.body === "string" ? json.body.slice(0, 1000) : JSON.stringify(json.body, null, 2).slice(0, 1000));
           } catch (e) {

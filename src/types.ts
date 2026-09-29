@@ -248,3 +248,25 @@ export function snapshotToRequest(
     postScript: snap.postScript || "",
   };
 }
+
+declare global {
+  interface Window {
+    pulseDesktop?: {
+      isDesktop: boolean;
+      platform: string;
+      proxyRequest: (payload: {
+        method: string;
+        url: string;
+        headers?: Record<string, string>;
+        body?: string | null;
+        timeout?: number;
+      }) => Promise<ProxyResponse>;
+      checkHealth?: () => Promise<{
+        ok: boolean;
+        service: string;
+        platform?: string;
+        timestamp: string;
+      }>;
+    };
+  }
+}

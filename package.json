@@ -42,6 +42,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "executableName": "pulse-api-studio",
@@ -107,6 +113,7 @@
       "dist/**/*",
       "public/**/*",
       "main.js",
+      "preload.cjs",
       "server.js",
       "package.json"
     ]

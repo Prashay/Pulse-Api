@@ -224,6 +224,15 @@ export function buildOutbound(
   return { method: snap.method, url: url.toString(), headers, body };
 }
 
+export function getProxyBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    if (window.location.protocol === "file:" || !window.location.host) {
+      return "http://127.0.0.1:3001";
+    }
+  }
+  return "";
+}
+
 export async function sendRequest(
   snap: RequestSnapshot,
   env: Environment | null,
@@ -262,46 +271,102 @@ export async function sendRequest(
   // 2. Build Outbound Request with interpolated variables
   const outbound = buildOutbound(effectiveSnap, env, collection);
 
-  // 3. Dispatch to API Proxy
-  let responseData: ProxyResponse;
-  try {
-    const res = await fetch("/api/proxy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  // 3. Dispatch Request: Native Desktop IPC (if available) -> Local Proxy -> Direct Fetch fallback
+  let responseData: ProxyResponse | null = null;
+
+  // Layer 1: Electron Desktop Native IPC (Zero CORS issues, zero port conflicts, offline mock support)
+  if (typeof window !== "undefined" && window.pulseDesktop?.proxyRequest) {
+    try {
+      responseData = await window.pulseDesktop.proxyRequest({
         method: outbound.method,
         url: outbound.url,
         headers: outbound.headers,
         body: outbound.body,
         timeout: 30000,
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      responseData = {
-        ok: false,
-        error: true,
-        status: res.status,
-        statusText: res.statusText,
-        headers: {},
-        body: text || "Proxy request failed",
-        time: 0,
-        size: 0,
-      };
-    } else {
-      responseData = (await res.json()) as ProxyResponse;
+      });
+    } catch (ipcErr) {
+      console.warn("Desktop native IPC proxy encountered error, trying HTTP proxy:", ipcErr);
+      responseData = null;
     }
-  } catch (err) {
-    responseData = {
-      ok: false,
-      error: true,
-      status: 0,
-      statusText: "Network Error",
-      headers: {},
-      body: err instanceof Error ? err.message : String(err),
-      time: 0,
-      size: 0,
-    };
+  }
+
+  // Layer 2: HTTP Proxy Server (/api/proxy or http://127.0.0.1:3001/api/proxy)
+  if (!responseData) {
+    const proxyUrl = `${getProxyBaseUrl()}/api/proxy`;
+    try {
+      const res = await fetch(proxyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: outbound.method,
+          url: outbound.url,
+          headers: outbound.headers,
+          body: outbound.body,
+          timeout: 30000,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        responseData = {
+          ok: false,
+          error: true,
+          status: res.status,
+          statusText: res.statusText,
+          headers: {},
+          body: text || "Proxy request failed",
+          time: 0,
+          size: 0,
+        };
+      } else {
+        responseData = (await res.json()) as ProxyResponse;
+      }
+    } catch (proxyErr) {
+      // Layer 3: Direct Client-Side Fetch (fallback if proxy is unreachable)
+      try {
+        const started = Date.now();
+        const directHeaders = new Headers();
+        for (const [k, v] of Object.entries(outbound.headers)) {
+          try {
+            directHeaders.set(k, v);
+          } catch {}
+        }
+        const directInit: RequestInit = {
+          method: outbound.method,
+          headers: directHeaders,
+        };
+        if (outbound.body && !["GET", "HEAD"].includes(outbound.method.toUpperCase())) {
+          directInit.body = outbound.body;
+        }
+        const directRes = await fetch(outbound.url, directInit);
+        const text = await directRes.text();
+        const respHeaders: Record<string, string> = {};
+        directRes.headers.forEach((v, k) => {
+          respHeaders[k] = v;
+        });
+        responseData = {
+          ok: directRes.ok,
+          error: !directRes.ok,
+          status: directRes.status,
+          statusText: directRes.statusText,
+          headers: respHeaders,
+          body: text,
+          time: Date.now() - started,
+          size: new Blob([text]).size,
+        };
+      } catch (directErr) {
+        const errMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+        responseData = {
+          ok: false,
+          error: true,
+          status: 0,
+          statusText: "Proxy Error",
+          headers: {},
+          body: `Unable to reach proxy server (${errMsg}). Ensure the desktop app or local proxy server is running.`,
+          time: 0,
+          size: 0,
+        };
+      }
+    }
   }
 
   // 4. Run Post-response (Tests) Scripts: Request-level tests first, then Collection-level tests
