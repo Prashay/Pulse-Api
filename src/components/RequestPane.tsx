@@ -249,9 +249,18 @@ export function RequestPane(props: Props) {
 
   return (
     <div className="pane request-pane">
-      <div className="urlbar url-bar">
+      <div
+        className="urlbar url-bar"
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      >
         <select
           className={`method-select ${METHOD_COLORS[draft.method]}`}
+          style={{ flexShrink: 0 }}
           value={draft.method}
           onChange={(e) => props.onChange({ method: e.target.value as HttpMethod })}
         >
@@ -263,6 +272,11 @@ export function RequestPane(props: Props) {
         </select>
         <input
           className="url-input"
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+            width: "100%",
+          }}
           placeholder="https://api.example.com/v1/users or curl command..."
           value={draft.url}
           onChange={(e) => {
@@ -304,6 +318,7 @@ export function RequestPane(props: Props) {
                     ? "#f59e0b"
                     : "#10b981",
               minWidth: 100,
+              flexShrink: 0,
             }}
             onClick={handleWsConnect}
           >
@@ -314,7 +329,12 @@ export function RequestPane(props: Props) {
                 : "Connect"}
           </button>
         ) : (
-          <button className="send-btn" disabled={props.sending} onClick={props.onSend}>
+          <button
+            className="send-btn"
+            style={{ flexShrink: 0 }}
+            disabled={props.sending}
+            onClick={props.onSend}
+          >
             {props.sending ? "Sending" : "Send"}
           </button>
         )}
