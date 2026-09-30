@@ -250,64 +250,52 @@ export function RequestPane(props: Props) {
 
   return (
     <div className="pane request-pane">
-      <div
-        className="urlbar url-bar"
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
-      >
-        <select
-          className={`method-select ${METHOD_COLORS[draft.method]}`}
-          style={{ flexShrink: 0 }}
-          value={draft.method}
-          onChange={(e) => props.onChange({ method: e.target.value as HttpMethod })}
-        >
-          {METHODS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <input
-          className="url-input"
-          style={{
-            flex: "1 1 auto",
-            minWidth: 0,
-            width: "100%",
-          }}
-          placeholder="https://api.example.com/v1/users or curl command..."
-          value={draft.url}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val.trim().toLowerCase().startsWith("curl ")) {
-              try {
-                const parsed = parseCurl(val);
-                props.onChange({
-                  method: parsed.method,
-                  url: parsed.url,
-                  params: parsed.params,
-                  headers: parsed.headers,
-                  bodyMode: parsed.bodyMode,
-                  body: parsed.body,
-                  auth: parsed.auth,
-                });
-                return;
-              } catch {
-                // Ignore incomplete curl while typing
+      <div className="urlbar url-bar">
+        <div className="url-input-group">
+          <select
+            className={`method-select ${METHOD_COLORS[draft.method]}`}
+            value={draft.method}
+            onChange={(e) => props.onChange({ method: e.target.value as HttpMethod })}
+          >
+            {METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <input
+            className="url-input"
+            placeholder="https://api.example.com/v1/users or paste cURL request..."
+            value={draft.url}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val.trim().toLowerCase().startsWith("curl ")) {
+                try {
+                  const parsed = parseCurl(val);
+                  props.onChange({
+                    method: parsed.method,
+                    url: parsed.url,
+                    params: parsed.params,
+                    headers: parsed.headers,
+                    bodyMode: parsed.bodyMode,
+                    body: parsed.body,
+                    auth: parsed.auth,
+                  });
+                  return;
+                } catch {
+                  // Ignore incomplete curl while typing
+                }
               }
-            }
-            props.onChange({ url: val });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              if (isWebSocket) handleWsConnect();
-              else props.onSend();
-            }
-          }}
-        />
+              props.onChange({ url: val });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (isWebSocket) handleWsConnect();
+                else props.onSend();
+              }
+            }}
+          />
+        </div>
         {isWebSocket ? (
           <button
             className={`send-btn ${wsStatus === "connected" ? "danger" : ""}`}
@@ -319,7 +307,6 @@ export function RequestPane(props: Props) {
                     ? "#f59e0b"
                     : "#10b981",
               minWidth: 100,
-              flexShrink: 0,
             }}
             onClick={handleWsConnect}
           >
@@ -332,11 +319,10 @@ export function RequestPane(props: Props) {
         ) : (
           <button
             className="send-btn"
-            style={{ flexShrink: 0 }}
             disabled={props.sending}
             onClick={props.onSend}
           >
-            {props.sending ? "Sending" : "Send"}
+            {props.sending ? "Sending..." : "Send"}
           </button>
         )}
       </div>
@@ -531,7 +517,7 @@ export function RequestPane(props: Props) {
             {props.envName && <span className="env-chip">🌐 {props.envName}</span>}
           </div>
 
-          <div className="pane-body">
+          <div className={`pane-body ${props.reqTab === "body" ? "is-body-tab" : props.reqTab === "scripts" ? "is-scripts-tab" : ""}`}>
             {/* Params Tab */}
             {props.reqTab === "params" && (
               <>
@@ -646,7 +632,7 @@ export function RequestPane(props: Props) {
 
             {/* Body Tab */}
             {props.reqTab === "body" && (
-              <>
+              <div className="body-tab-pane">
                 <div className="body-toolbar">
                   {(["none", "json", "raw", "form-urlencoded"] as BodyMode[]).map((mode) => (
                     <button
@@ -712,7 +698,7 @@ export function RequestPane(props: Props) {
                 )}
                 {/* Live Body Variable Resolution Feedback */}
                 {renderVariableChips(bodyVars)}
-              </>
+              </div>
             )}
 
             {/* Scripts Tab (Postman Style: Pre-request Script & After Response Tests) */}

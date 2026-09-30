@@ -1294,54 +1294,42 @@ export default function App() {
             )}
           </div>
 
-          {/* Theme Switcher: Dark, Light, Blue (Default) */}
-          <div className="theme-switcher" title="Change Theme: Blue (Default), Dark, Light">
-            <div className="theme-switcher-icon">
-              {theme === "blue" ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="m4.93 4.93 4.24 4.24" />
-                  <path d="m14.83 9.17 4.24-4.24" />
-                  <path d="m14.83 14.83 4.24 4.24" />
-                  <path d="m9.17 14.83-4.24 4.24" />
-                  <circle cx="12" cy="12" r="4" />
-                </svg>
-              ) : theme === "dark" ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                </svg>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2" />
-                  <path d="M12 20v2" />
-                  <path d="m4.93 4.93 1.41 1.41" />
-                  <path d="m17.66 17.66 1.41 1.41" />
-                  <path d="M2 12h2" />
-                  <path d="M20 12h2" />
-                  <path d="m6.34 17.66-1.41 1.41" />
-                  <path d="m19.07 4.93-1.41 1.41" />
-                </svg>
-              )}
-            </div>
-            <select
-              className="theme-select"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as ThemeMode)}
-              aria-label="Select Theme"
-            >
-              <option value="blue">Blue (Default)</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
+          {/* Quick Theme Toggle (Click cycles themes, or open full Theme tab in Settings) */}
+          <button
+            className="top-theme-quick-btn"
+            title={`Current theme: ${theme === "light" ? "Light" : theme === "dark" ? "Dark" : "Midnight Blue"}. Click to cycle themes, or customize in Settings.`}
+            onClick={() => {
+              const nextTheme: ThemeMode = theme === "light" ? "dark" : theme === "dark" ? "blue" : "light";
+              setTheme(nextTheme);
+              localStorage.setItem("pulse_theme", nextTheme);
+            }}
+            aria-label="Quick Toggle Theme"
+          >
+            {theme === "light" ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+              </svg>
+            ) : theme === "dark" ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="m4.93 4.93 4.24 4.24" />
+                <path d="m14.83 9.17 4.24-4.24" />
+                <circle cx="12" cy="12" r="4" />
+              </svg>
+            )}
+          </button>
 
-          {/* Settings Button: Font Size & Font Family Controls */}
+          {/* Settings Button: Preferences, Themes, Typography & Layout */}
           <button
             className="top-settings-btn"
             onClick={() => setSettingsOpen(true)}
-            title="Display & Typography Settings (Adjust font size & family)"
-            aria-label="Display & Typography Settings"
+            title="Preferences & Settings (Themes, Fonts, Workspace Layout)"
+            aria-label="Preferences & Settings"
           >
             <svg
               width="15"
@@ -1742,6 +1730,11 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         settings={fontSettings}
         onUpdateSettings={handleUpdateFontSettings}
+        theme={theme}
+        onUpdateTheme={(t) => {
+          setTheme(t);
+          localStorage.setItem("pulse_theme", t);
+        }}
         panelLayout={panelLayout}
         onUpdatePanelLayout={handleUpdatePanelLayout}
         onResetPanelSizes={handleResetPanelSizes}

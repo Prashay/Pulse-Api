@@ -1,4 +1,5 @@
 import { useEffect, useState, type FC } from "react";
+import type { ThemeMode } from "../types";
 
 export interface FontSettings {
   fontSize: number; // in px, e.g. 13
@@ -6,6 +7,58 @@ export interface FontSettings {
   codeFontSize: number;
   codeFontFamily: string;
 }
+
+export interface ThemePreset {
+  id: ThemeMode;
+  name: string;
+  badge: string;
+  desc: string;
+  bg: string;
+  sidebarBg: string;
+  cardBg: string;
+  accent: string;
+  textColor: string;
+  textMute: string;
+}
+
+export const THEME_PRESETS: ThemePreset[] = [
+  {
+    id: "blue",
+    name: "Midnight Blue",
+    badge: "DEFAULT",
+    desc: "Deep tech aesthetics with electric blue accents and high-contrast text",
+    bg: "#070a12",
+    sidebarBg: "#0d1322",
+    cardBg: "#141c30",
+    accent: "#3b82f6",
+    textColor: "#ffffff",
+    textMute: "#94a3b8",
+  },
+  {
+    id: "dark",
+    name: "Deep Charcoal",
+    badge: "BRUNO DARK",
+    desc: "Modern neutral dark palette with violet accents and minimal eye strain",
+    bg: "#08090d",
+    sidebarBg: "#0e1017",
+    cardBg: "#151822",
+    accent: "#8b5cf6",
+    textColor: "#ffffff",
+    textMute: "#9ca3af",
+  },
+  {
+    id: "light",
+    name: "Crisp Clean",
+    badge: "BRUNO LIGHT",
+    desc: "Bright daylight layout with high-contrast text, slate borders, and crisp blue accents",
+    bg: "#f8fafc",
+    sidebarBg: "#ffffff",
+    cardBg: "#ffffff",
+    accent: "#2563eb",
+    textColor: "#0f172a",
+    textMute: "#64748b",
+  },
+];
 
 export const FONT_FAMILY_PRESETS = [
   {
@@ -88,6 +141,8 @@ interface Props {
   onClose: () => void;
   settings: FontSettings;
   onUpdateSettings: (settings: FontSettings) => void;
+  theme?: ThemeMode;
+  onUpdateTheme?: (theme: ThemeMode) => void;
   panelLayout?: PanelLayoutMode;
   onUpdatePanelLayout?: (layout: PanelLayoutMode) => void;
   onResetPanelSizes?: () => void;
@@ -98,12 +153,14 @@ export const SettingsModal: FC<Props> = ({
   onClose,
   settings,
   onUpdateSettings,
+  theme = "blue",
+  onUpdateTheme,
   panelLayout = "response-bottom",
   onUpdatePanelLayout,
   onResetPanelSizes,
 }) => {
   const [localSettings, setLocalSettings] = useState<FontSettings>(settings);
-  const [activeTab, setActiveTab] = useState<"typography" | "layout">("typography");
+  const [activeTab, setActiveTab] = useState<"theme" | "typography" | "layout">("theme");
   const [resetNotif, setResetNotif] = useState(false);
   const [panelResetNotif, setPanelResetNotif] = useState(false);
 
@@ -166,7 +223,7 @@ export const SettingsModal: FC<Props> = ({
       <div
         className="modal settings-modal"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 620, width: "95%" }}
+        style={{ maxWidth: 640, width: "95%" }}
       >
         <div className="settings-modal-head">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -174,7 +231,7 @@ export const SettingsModal: FC<Props> = ({
             <div>
               <h2 style={{ margin: 0, fontSize: 18 }}>Preferences & Studio Settings</h2>
               <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
-                Customize font scaling, typography, and panel workspace arrangement.
+                Customize themes, color palettes, typography, and workspace layout.
               </p>
             </div>
           </div>
@@ -185,6 +242,12 @@ export const SettingsModal: FC<Props> = ({
 
         {/* Settings Navigation Tabs */}
         <div className="settings-nav-tabs">
+          <button
+            className={`settings-nav-tab ${activeTab === "theme" ? "active" : ""}`}
+            onClick={() => setActiveTab("theme")}
+          >
+            🎨 Themes & Appearance
+          </button>
           <button
             className={`settings-nav-tab ${activeTab === "typography" ? "active" : ""}`}
             onClick={() => setActiveTab("typography")}
@@ -199,8 +262,114 @@ export const SettingsModal: FC<Props> = ({
           </button>
         </div>
 
-        {activeTab === "typography" ? (
-          <>
+        {activeTab === "theme" && (
+          <div className="settings-tab-pane">
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <span className="settings-title">Studio Theme & Color Scheme</span>
+                  <div className="settings-subtitle">
+                    Select your preferred color theme (inspired by Bruno's theme architecture)
+                  </div>
+                </div>
+              </div>
+
+              <div className="theme-cards-grid">
+                {THEME_PRESETS.map((t) => {
+                  const isSelected = theme === t.id;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`theme-card ${isSelected ? "selected" : ""}`}
+                      onClick={() => onUpdateTheme?.(t.id)}
+                    >
+                      <div
+                        className="theme-card-preview"
+                        style={{
+                          background: t.bg,
+                          borderColor: isSelected ? t.accent : undefined,
+                        }}
+                      >
+                        <div
+                          className="theme-card-preview-sidebar"
+                          style={{ background: t.sidebarBg }}
+                        >
+                          <div
+                            className="theme-card-preview-item"
+                            style={{ background: t.accent, width: "65%" }}
+                          />
+                          <div
+                            className="theme-card-preview-item"
+                            style={{ background: t.cardBg, width: "80%" }}
+                          />
+                          <div
+                            className="theme-card-preview-item"
+                            style={{ background: t.cardBg, width: "50%" }}
+                          />
+                        </div>
+                        <div className="theme-card-preview-main">
+                          <div
+                            className="theme-card-preview-bar"
+                            style={{ background: t.cardBg, borderColor: t.accent }}
+                          >
+                            <span style={{ color: t.accent, fontWeight: 700, fontSize: 8 }}>
+                              GET
+                            </span>
+                            <span style={{ color: t.textMute, fontSize: 7.5 }}>
+                              api/users
+                            </span>
+                          </div>
+                          <div className="theme-card-preview-content">
+                            <div
+                              className="theme-preview-code-line"
+                              style={{ background: t.textMute, width: "75%" }}
+                            />
+                            <div
+                              className="theme-preview-code-line"
+                              style={{ background: t.accent, width: "50%" }}
+                            />
+                            <div
+                              className="theme-preview-code-line"
+                              style={{ background: t.textMute, width: "60%" }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="theme-card-info">
+                        <div className="theme-card-title-row">
+                          <span className="theme-card-name" style={{ color: t.textColor }}>
+                            {t.name}
+                          </span>
+                          <span className="theme-card-badge">{t.badge}</span>
+                        </div>
+                        <p className="theme-card-desc">{t.desc}</p>
+                        {isSelected && (
+                          <div className="theme-card-active-indicator">
+                            <span className="theme-check-icon">✓</span>
+                            <span>Active Theme</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="modal-actions"
+              style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 10 }}
+            >
+              <div style={{ flex: 1 }} />
+              <button className="btn primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "typography" && (
+          <div className="settings-tab-pane">
             <div className="settings-section">
               <div className="settings-label-row">
                 <div>
@@ -354,10 +523,12 @@ export const SettingsModal: FC<Props> = ({
                 Done
               </button>
             </div>
-          </>
-        ) : (
-          /* Panel Layout & Workspace Tab */
-          <div className="settings-layout-section">
+          </div>
+        )}
+
+        {/* Panel Layout & Workspace Tab */}
+        {activeTab === "layout" && (
+          <div className="settings-tab-pane settings-layout-section">
             <div className="settings-section">
               <div className="settings-label-row">
                 <div>

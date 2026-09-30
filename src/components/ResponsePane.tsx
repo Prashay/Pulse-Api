@@ -105,14 +105,29 @@ export function ResponsePane({ response, sending }: Props) {
         )}
         {!sending && response && tab === "body" && <pre className="resp-pre">{body || "(empty)"}</pre>}
         {!sending && response && tab === "headers" && (
-          <div className="headers-list">
-            {Object.keys(response.headers).length === 0 && <div className="empty">No response headers</div>}
-            {Object.entries(response.headers).map(([k, v]) => (
-              <div key={k} className="header-row">
-                <span className="header-key">{k}</span>
-                <span className="header-val">{v}</span>
+          <div className="resp-headers-wrapper">
+            {Object.keys(response.headers).length === 0 ? (
+              <div className="empty">No response headers</div>
+            ) : (
+              <div className="resp-headers-card">
+                <table className="resp-headers-table">
+                  <thead>
+                    <tr>
+                      <th className="resp-th-name">Name</th>
+                      <th className="resp-th-val">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(response.headers).map(([k, v]) => (
+                      <tr key={k}>
+                        <td className="resp-header-name">{k}</td>
+                        <td className="resp-header-value">{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
+            )}
           </div>
         )}
         {!sending && response && tab === "tests" && (

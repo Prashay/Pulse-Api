@@ -8,6 +8,8 @@ export type HttpMethod =
   | "OPTIONS"
   | "WS";
 
+export type ThemeMode = "blue" | "dark" | "light";
+
 export type BodyMode = "none" | "raw" | "json" | "form-urlencoded";
 export type AuthType = "none" | "bearer" | "basic" | "apikey";
 export type AuthApiKeyIn = "header" | "query";
