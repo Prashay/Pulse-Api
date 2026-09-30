@@ -33,6 +33,7 @@ import { Sidebar } from "./components/Sidebar";
 import { RequestPane, type ReqTab } from "./components/RequestPane";
 import { ResponsePane } from "./components/ResponsePane";
 import { RunnerModal } from "./components/RunnerModal";
+import { CollectionModal, type CollectionTab } from "./components/CollectionModal";
 import { EnvModal } from "./components/EnvModal";
 import { CurlModal, type CurlImportTarget } from "./components/CurlModal";
 import { ImportModal } from "./components/ImportModal";
@@ -131,6 +132,8 @@ export default function App() {
   const [reqTab, setReqTab] = useState<ReqTab>("params");
   const [savedLabel, setSavedLabel] = useState<string | null>(null);
   const [runnerCol, setRunnerCol] = useState<Collection | null>(null);
+  const [editingCollectionCol, setEditingCollectionCol] = useState<Collection | null>(null);
+  const [collectionModalTab, setCollectionModalTab] = useState<CollectionTab>("scripts-pre");
   const [envOpen, setEnvOpen] = useState(false);
   const [editTargetEnvId, setEditTargetEnvId] = useState<string | null>(null);
   const [curlOpen, setCurlOpen] = useState(false);
@@ -159,11 +162,26 @@ export default function App() {
     const savedCodeSize = localStorage.getItem("pulse_code_font_size");
     const savedCodeFamily = localStorage.getItem("pulse_code_font_family");
 
+    // Default: Crisp 12px UI typography and 12px JetBrains Mono code typography
+    const defaultFamily = FONT_FAMILY_PRESETS[0].value;
+    const defaultCodeFamily = CODE_FONT_PRESETS[0].value;
+    const defaultSize = 12;
+
+    const initialSize = savedSize && savedSize !== "13" ? parseInt(savedSize, 10) || defaultSize : defaultSize;
+    const initialFamily =
+      savedFamily && (savedFamily.includes("Plus Jakarta") || savedFamily.includes("Inter"))
+        ? savedFamily
+        : defaultFamily;
+    const initialCodeFamily =
+      savedCodeFamily && !savedCodeFamily.includes("Courier") && !savedCodeFamily.includes("Monaco")
+        ? savedCodeFamily
+        : defaultCodeFamily;
+
     return {
-      fontSize: savedSize ? parseInt(savedSize, 10) || 13 : 13,
-      fontFamily: savedFamily || FONT_FAMILY_PRESETS[0].value,
+      fontSize: initialSize,
+      fontFamily: initialFamily,
       codeFontSize: savedCodeSize ? parseInt(savedCodeSize, 10) || 12 : 12,
-      codeFontFamily: savedCodeFamily || CODE_FONT_PRESETS[0].value,
+      codeFontFamily: initialCodeFamily,
     };
   });
 
@@ -767,6 +785,24 @@ export default function App() {
       };
     });
     flashImport(`Created folder "${name.trim()}"`);
+  };
+
+  const openEditCollection = (
+    id: string,
+    initialTab: CollectionTab = "scripts-pre"
+  ) => {
+    const col = data.collections.find((c) => c.id === id);
+    if (!col) return;
+    setEditingCollectionCol(col);
+    setCollectionModalTab(initialTab);
+  };
+
+  const saveCollection = (updated: Collection) => {
+    patchData((prev) => ({
+      ...prev,
+      collections: prev.collections.map((c) => (c.id === updated.id ? updated : c)),
+    }));
+    flashImport(`Saved collection "${updated.name}"`);
   };
 
   const renameCollection = (id: string) => {
@@ -1444,6 +1480,7 @@ export default function App() {
           onNewRequest={newRequest}
           onNewRequestType={createNewRequest}
           onNewFolder={newFolder}
+          onEditCollection={openEditCollection}
           onRenameCollection={renameCollection}
           onDeleteCollection={deleteCollection}
           onExportCollection={exportCol}
@@ -1561,6 +1598,7 @@ export default function App() {
                       envName={activeEnv?.name ?? null}
                       env={activeEnv}
                       collection={activeCol}
+                      onEditCollection={openEditCollection}
                     />
                   </div>
 
@@ -1653,6 +1691,15 @@ export default function App() {
           env={activeEnv}
           onSelectEnv={(id) => patchData({ activeEnvId: id })}
           onClose={() => setRunnerCol(null)}
+        />
+      )}
+      {editingCollectionCol && (
+        <CollectionModal
+          collection={editingCollectionCol}
+          isOpen={Boolean(editingCollectionCol)}
+          initialTab={collectionModalTab}
+          onClose={() => setEditingCollectionCol(null)}
+          onSave={saveCollection}
         />
       )}
       {envOpen && (

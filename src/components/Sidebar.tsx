@@ -14,6 +14,7 @@ interface Props {
   onNewRequest: (collectionId: string, folderId: string | null) => void;
   onNewRequestType?: (type: "http" | "websocket" | "graphql" | "mock") => void;
   onNewFolder: (collectionId: string, folderId: string | null) => void;
+  onEditCollection?: (id: string, initialTab?: "scripts-pre" | "scripts-post" | "variables" | "overview") => void;
   onRenameCollection: (id: string) => void;
   onDeleteCollection: (id: string) => void;
   onExportCollection: (id: string) => void;
@@ -32,6 +33,29 @@ interface Props {
   isResizing?: boolean;
   onStartResize?: (e: React.MouseEvent) => void;
   onResetResize?: () => void;
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{
+        transform: open ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 0.14s cubic-bezier(0.16, 1, 0.3, 1)",
+        display: "inline-block",
+        flexShrink: 0,
+      }}
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
 }
 
 export function Sidebar(props: Props) {
@@ -511,12 +535,41 @@ export function Sidebar(props: Props) {
                       e.stopPropagation();
                       setCollapsed((s) => ({ ...s, [col.id]: !s[col.id] }));
                     }}
+                    aria-label={collapsed[col.id] ? "Expand collection" : "Collapse collection"}
                   >
-                    {collapsed[col.id] ? ">" : "v"}
+                    <Chevron open={!collapsed[col.id]} />
                   </button>
                   <span className="col-folder-icon">📁</span>
                   <span className="grow">{col.name}</span>
+                  {(col.preScript || col.postScript) && (
+                    <span
+                      title={`Active collection scripts: ${[col.preScript ? "Pre-request" : null, col.postScript ? "Tests" : null].filter(Boolean).join(", ")} (Click to edit)`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onEditCollection?.(col.id, "scripts-pre");
+                      }}
+                      style={{
+                        fontSize: 10,
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        background: "var(--accent-soft)",
+                        color: "var(--accent)",
+                        fontWeight: 700,
+                        marginRight: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ⚡
+                    </span>
+                  )}
                   <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="tree-action-btn"
+                      title="Collection Scripts & Settings"
+                      onClick={() => props.onEditCollection?.(col.id, "scripts-pre")}
+                    >
+                      ⚡
+                    </button>
                     <button
                       className="tree-action-btn"
                       title="Add Folder inside this collection"
@@ -564,7 +617,7 @@ export function Sidebar(props: Props) {
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 4, marginTop: 10 }}>
           <button className="section-title env-section" style={{ flex: 1, marginBottom: 0 }} onClick={() => setEnvOpen((v) => !v)}>
-            <span className="chev">{envOpen ? "v" : ">"}</span>
+            <span className="chev"><Chevron open={envOpen} /></span>
             ENVIRONMENTS
           </button>
           <button
@@ -663,6 +716,14 @@ export function Sidebar(props: Props) {
           style={{ top: menu.y, left: Math.min(menu.x, 160) }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={() => {
+              props.onEditCollection?.(menu.id, "scripts-pre");
+              setMenu(null);
+            }}
+          >
+            ⚡ Scripts & Settings
+          </button>
           <button
             onClick={() => {
               props.onNewRequest(menu.id, null);
@@ -778,7 +839,7 @@ function NodeList(props: {
                   }}
                   aria-label={isFolderCollapsed ? "Expand folder" : "Collapse folder"}
                 >
-                  {isFolderCollapsed ? ">" : "v"}
+                  <Chevron open={!isFolderCollapsed} />
                 </button>
                 <span className="folder-ico">{isFolderCollapsed ? "📁" : "📂"}</span>
                 <span className="name">{node.name}</span>

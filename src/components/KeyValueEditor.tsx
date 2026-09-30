@@ -33,10 +33,10 @@ export function KeyValueEditor({
     <table className="kv-table">
       <thead>
         <tr>
-          <th style={{ width: 28 }}></th>
+          <th style={{ width: 30 }}></th>
           <th>Key</th>
           <th>Value</th>
-          <th style={{ width: 32 }}></th>
+          <th style={{ width: 34 }}></th>
         </tr>
       </thead>
       <tbody>
@@ -44,12 +44,13 @@ export function KeyValueEditor({
           const isNew = index >= rows.length;
           return (
             <tr key={row.id}>
-              <td>
+              <td style={{ textAlign: "center" }}>
                 <input
                   type="checkbox"
                   checked={row.enabled}
                   disabled={isNew}
                   onChange={(e) => update(index, { enabled: e.target.checked })}
+                  aria-label={isNew ? "New row checkbox" : `Enable ${row.key || "row"}`}
                 />
               </td>
               <td>
@@ -58,6 +59,7 @@ export function KeyValueEditor({
                   placeholder={keyPlaceholder}
                   value={row.key}
                   onChange={(e) => update(index, { key: e.target.value })}
+                  aria-label="Key"
                 />
               </td>
               <td>
@@ -66,12 +68,31 @@ export function KeyValueEditor({
                   placeholder={valuePlaceholder}
                   value={row.value}
                   onChange={(e) => update(index, { value: e.target.value })}
+                  aria-label="Value"
                 />
               </td>
               <td>
                 {!isNew && (
-                  <button className="icon-btn" onClick={() => remove(row.id)} title="Remove">
-                    x
+                  <button
+                    type="button"
+                    className="kv-remove-btn"
+                    onClick={() => remove(row.id)}
+                    title="Remove entry"
+                    aria-label="Remove entry"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
                   </button>
                 )}
               </td>

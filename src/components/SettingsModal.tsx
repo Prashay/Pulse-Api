@@ -9,16 +9,28 @@ export interface FontSettings {
 
 export const FONT_FAMILY_PRESETS = [
   {
-    id: "default",
-    name: "Inter & Jakarta (Default)",
-    value: '"Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    sample: "Modern, balanced UI sans-serif",
+    id: "sans",
+    name: "Plus Jakarta Sans & Inter (Default — Razor Sharp UI)",
+    value: '"Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    sample: "Crisp, balanced high-definition UI typography",
   },
   {
     id: "jetbrains",
-    name: "JetBrains Mono (Coding)",
-    value: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
-    sample: "Engineered for high readability in code",
+    name: "JetBrains Mono (Developer Monospace)",
+    value: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace',
+    sample: "Pixel-perfect modern developer monospace",
+  },
+  {
+    id: "cascadia",
+    name: "Cascadia Code / Consolas",
+    value: '"Cascadia Code", Consolas, monospace',
+    sample: "Clean Windows developer monospace",
+  },
+  {
+    id: "fira",
+    name: "Fira Code (Developer)",
+    value: '"Fira Code", "Source Code Pro", Consolas, monospace',
+    sample: "Monospace font with code ligatures",
   },
   {
     id: "roboto",
@@ -33,12 +45,6 @@ export const FONT_FAMILY_PRESETS = [
     sample: "Crisp technical typography",
   },
   {
-    id: "fira",
-    name: "Fira Code (Developer)",
-    value: '"Fira Code", "Source Code Pro", Consolas, monospace',
-    sample: "Monospace font with code ligature flair",
-  },
-  {
     id: "apple",
     name: "San Francisco (Apple Style)",
     value: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
@@ -50,29 +56,13 @@ export const FONT_FAMILY_PRESETS = [
     value: '"Segoe UI", -apple-system, Roboto, Tahoma, sans-serif',
     sample: "Standard Windows typography",
   },
-  {
-    id: "monaco",
-    name: "Monaco & IBM Plex Mono (Terminal)",
-    value: "Monaco, IBMPlexMono, 'Courier New', monospace",
-    sample: "Classic high-precision developer monospace",
-  },
 ];
 
 export const CODE_FONT_PRESETS = [
   {
-    id: "monaco-ibm",
-    name: "Monaco, IBM Plex Mono & Courier New (Default)",
-    value: "Monaco, IBMPlexMono, 'Courier New', monospace",
-  },
-  {
     id: "jetbrains-mono",
-    name: "JetBrains Mono",
-    value: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace',
-  },
-  {
-    id: "fira-code",
-    name: "Fira Code",
-    value: '"Fira Code", "Source Code Pro", Consolas, monospace',
+    name: "JetBrains Mono (Default — Razor Sharp)",
+    value: '"JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace',
   },
   {
     id: "cascadia",
@@ -80,9 +70,14 @@ export const CODE_FONT_PRESETS = [
     value: '"Cascadia Code", Consolas, "Courier New", monospace',
   },
   {
+    id: "fira-code",
+    name: "Fira Code",
+    value: '"Fira Code", "Source Code Pro", Consolas, monospace',
+  },
+  {
     id: "system-mono",
     name: "System Monospace",
-    value: 'ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace',
+    value: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
   },
 ];
 
@@ -145,10 +140,10 @@ export const SettingsModal: FC<Props> = ({
 
   const resetDefaults = () => {
     const defaults: FontSettings = {
-      fontSize: 13,
+      fontSize: 12,
       fontFamily: FONT_FAMILY_PRESETS[0].value,
       codeFontSize: 12,
-      codeFontFamily: "Monaco, IBMPlexMono, 'Courier New', monospace",
+      codeFontFamily: CODE_FONT_PRESETS[0].value,
     };
     setLocalSettings(defaults);
     onUpdateSettings(defaults);

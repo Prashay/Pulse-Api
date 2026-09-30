@@ -21,6 +21,7 @@ interface Props {
   envName: string | null;
   env?: Environment | null;
   collection?: Collection | null;
+  onEditCollection?: (id: string, initialTab?: "scripts-pre" | "scripts-post" | "variables" | "overview") => void;
   onReqTab: (t: ReqTab) => void;
   onChange: (patch: Partial<RequestSnapshot>) => void;
   onSend: () => void;
@@ -852,19 +853,58 @@ export function RequestPane(props: Props) {
 
                 {/* Main Script Editor */}
                 <div className="scripts-editor-area">
-                  {props.collection && (props.collection.preScript || props.collection.postScript) && (
+                  {props.collection && (
                     <div className="collection-script-banner">
                       <div className="collection-script-icon">📁</div>
-                      <div className="collection-script-info">
-                        <span className="collection-script-title">Collection Script Active</span>
+                      <div className="collection-script-info" style={{ flex: 1 }}>
+                        <span className="collection-script-title">
+                          {props.collection.preScript || props.collection.postScript
+                            ? "Collection Script Active"
+                            : "Collection-Level Scripts"}
+                        </span>
                         <span className="collection-script-desc">
-                          Parent collection <b>{props.collection.name}</b> has {
-                            [props.collection.preScript ? "Pre-request" : null, props.collection.postScript ? "Tests" : null]
-                              .filter(Boolean)
-                              .join(" & ")
-                          } scripts defined that run with this request.
+                          {props.collection.preScript || props.collection.postScript ? (
+                            <>
+                              Parent collection <b>{props.collection.name}</b> has{" "}
+                              {[props.collection.preScript ? "Pre-request" : null, props.collection.postScript ? "Tests" : null]
+                                .filter(Boolean)
+                                .join(" & ")}{" "}
+                              scripts defined that run with this request.
+                            </>
+                          ) : (
+                            <>
+                              Execute shared JavaScript before or after all requests in <b>{props.collection.name}</b>.
+                            </>
+                          )}
                         </span>
                       </div>
+                      {props.onEditCollection && (
+                        <button
+                          type="button"
+                          className="btn sm"
+                          style={{
+                            fontSize: 11,
+                            padding: "4px 10px",
+                            whiteSpace: "nowrap",
+                            background: "var(--bg-3)",
+                            border: "1px solid var(--border)",
+                            color: "var(--accent)",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                          onClick={() =>
+                            props.onEditCollection!(
+                              props.collection!.id,
+                              scriptSubTab === "pre" ? "scripts-pre" : "scripts-post"
+                            )
+                          }
+                          title="Open Collection Script Editor"
+                        >
+                          {props.collection.preScript || props.collection.postScript
+                            ? "Edit Collection Scripts ⚡"
+                            : "+ Add Collection Script ⚡"}
+                        </button>
+                      )}
                     </div>
                   )}
 

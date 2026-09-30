@@ -12,6 +12,7 @@ interface Props {
 export function ResponsePane({ response, sending }: Props) {
   const [tab, setTab] = useState<RespTab>("body");
   const [pretty, setPretty] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const testResults = response?.testResults || [];
   const scriptLogs = response?.scriptLogs || [];
@@ -33,6 +34,13 @@ export function ResponsePane({ response, sending }: Props) {
         : response.status >= 400
           ? "status-err"
           : "status-warn";
+
+  const handleCopyBody = () => {
+    if (!body) return;
+    navigator.clipboard.writeText(body);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <div className="pane response-pane">
@@ -57,32 +65,52 @@ export function ResponsePane({ response, sending }: Props) {
             <span className={`status-pill ${statusClass}`}>
               {response.error ? response.statusText : `${response.status} ${response.statusText}`}
             </span>
-            <span>{response.time} ms</span>
-            <span>{formatBytes(response.size)}</span>
+            <span className="resp-meta-chip">⏱️ {response.time} ms</span>
+            <span className="resp-meta-chip">📦 {formatBytes(response.size)}</span>
             {tab === "body" && (
-              <button className="btn sm ghost" onClick={() => setPretty((p) => !p)}>
+              <button className="btn sm ghost" onClick={() => setPretty((p) => !p)} title="Toggle formatted JSON vs raw body">
                 {pretty ? "Raw" : "Pretty"}
+              </button>
+            )}
+            {tab === "body" && body && (
+              <button className="btn sm ghost" onClick={handleCopyBody} title="Copy response body to clipboard">
+                {copied ? "✓ Copied" : "Copy"}
               </button>
             )}
           </div>
         )}
       </div>
       <div className="pane-body">
-        {sending && <div className="empty busy">Sending request...</div>}
+        {sending && (
+          <div className="empty busy" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10 }}>
+            <div className="pulse-spinner" />
+            <div>Dispatching HTTP request...</div>
+          </div>
+        )}
         {!sending && !response && (
           <div className="empty-hero">
-            <div>Send a request to get a response</div>
-            <div className="muted">Enter to send · Ctrl/Cmd+S to save</div>
+            <div className="empty-hero-icon-box">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+            <div className="empty-hero-title">Ready to Send Request</div>
+            <div className="empty-hero-desc">Hit Send or press Enter to dispatch this request and inspect response data.</div>
+            <div className="empty-hero-shortcuts">
+              <span className="shortcut-chip"><kbd>Enter</kbd> Send</span>
+              <span className="shortcut-chip"><kbd>Ctrl</kbd>+<kbd>S</kbd> Save</span>
+            </div>
           </div>
         )}
         {!sending && response && tab === "body" && <pre className="resp-pre">{body || "(empty)"}</pre>}
         {!sending && response && tab === "headers" && (
           <div className="headers-list">
-            {Object.keys(response.headers).length === 0 && <div className="empty">No headers</div>}
+            {Object.keys(response.headers).length === 0 && <div className="empty">No response headers</div>}
             {Object.entries(response.headers).map(([k, v]) => (
-              <div key={k}>
-                <b>{k}</b>
-                <span>{v}</span>
+              <div key={k} className="header-row">
+                <span className="header-key">{k}</span>
+                <span className="header-val">{v}</span>
               </div>
             ))}
           </div>

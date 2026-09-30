@@ -267,6 +267,8 @@ export function createSampleCollections(): Collection[] {
       name: "HTTPBin Echo & Status Sandbox",
       description: "Live validation suite for HTTP query params, headers, and status codes",
       children: [httpbinGet, httpbinPost, httpbinStatus200, httpbinStatus404],
+      preScript: `// Collection Pre-request Script: Runs before every request in this collection\npm.environment.set("requestTimestamp", Date.now().toString());\nconsole.log("[Collection Pre-Script] Running for:", pm.request.method, pm.request.url);`,
+      postScript: `// Collection Tests: Runs after every response in this collection\npm.test("Collection Global Check: Response Latency is Recorded", function () {\n    pm.expect(pm.response.responseTime).to.be.atLeast(0);\n});`,
     },
   ];
 }
