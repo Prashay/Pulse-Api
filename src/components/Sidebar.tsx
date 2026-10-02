@@ -18,15 +18,18 @@ interface Props {
   onRenameCollection: (id: string) => void;
   onDeleteCollection: (id: string) => void;
   onExportCollection: (id: string) => void;
+  onDuplicateCollection?: (id: string) => void;
   onRunCollection: (id: string) => void;
   onRenameNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
+  onDuplicateNode?: (id: string, collectionId: string) => void;
   onImportClick: () => void;
   onImportCurl: () => void;
   onSelectEnv: (id: string) => void;
   onManageEnv: () => void;
   onNewEnv: () => void;
   onEditEnv?: (id: string) => void;
+  onDuplicateEnv?: (id: string) => void;
   onDeleteEnv?: (id: string) => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
@@ -608,6 +611,7 @@ export function Sidebar(props: Props) {
                     onNewFolder={props.onNewFolder}
                     onRenameNode={props.onRenameNode}
                     onDeleteNode={props.onDeleteNode}
+                    onDuplicateNode={props.onDuplicateNode}
                   />
                 )}
               </div>
@@ -645,6 +649,20 @@ export function Sidebar(props: Props) {
                 <span className="name" title={env.name}>{env.name}</span>
                 {props.activeEnvId === env.id && <span className="env-check">&#10003;</span>}
                 <div className="env-row-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="env-action-btn"
+                    title={`Duplicate environment "${env.name}"`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onDuplicateEnv?.(env.id);
+                    }}
+                    aria-label={`Duplicate ${env.name}`}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  </button>
                   <button
                     className="env-action-btn"
                     title={`Edit environment "${env.name}"`}
@@ -756,6 +774,16 @@ export function Sidebar(props: Props) {
           >
             Export collection
           </button>
+          {props.onDuplicateCollection && (
+            <button
+              onClick={() => {
+                props.onDuplicateCollection?.(menu.id);
+                setMenu(null);
+              }}
+            >
+              Duplicate collection
+            </button>
+          )}
           <button
             onClick={() => {
               props.onRenameCollection(menu.id);
@@ -816,6 +844,7 @@ function NodeList(props: {
   onNewFolder: (collectionId: string, folderId: string | null) => void;
   onRenameNode: (id: string) => void;
   onDeleteNode: (id: string) => void;
+  onDuplicateNode?: (id: string, collectionId: string) => void;
 }) {
   return (
     <>
@@ -858,6 +887,15 @@ function NodeList(props: {
                   >
                     +
                   </button>
+                  {props.onDuplicateNode && (
+                    <button
+                      className="tree-action-btn"
+                      title="Duplicate folder"
+                      onClick={() => props.onDuplicateNode?.(node.id, props.collectionId)}
+                    >
+                      ⧉
+                    </button>
+                  )}
                   <button
                     className="tree-action-btn"
                     title="Rename folder"
@@ -893,6 +931,15 @@ function NodeList(props: {
             <span className={`method ${METHOD_COLORS[node.method]}`}>{shortMethod(node.method)}</span>
             <span className="name">{node.name}</span>
             <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
+              {props.onDuplicateNode && (
+                <button
+                  className="tree-action-btn"
+                  title="Duplicate request"
+                  onClick={() => props.onDuplicateNode?.(node.id, props.collectionId)}
+                >
+                  ⧉
+                </button>
+              )}
               <button
                 className="tree-action-btn"
                 title="Rename request"

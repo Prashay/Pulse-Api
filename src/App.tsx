@@ -20,7 +20,17 @@ import {
   pushHistory,
   saveData,
 } from "./storage";
-import { findRequest, insertNode, removeNode, renameNode, updateRequest } from "./tree";
+import {
+  duplicateCollection,
+  duplicateEnvironment,
+  duplicateNode,
+  findRequest,
+  insertNode,
+  parentFolderId,
+  removeNode,
+  renameNode,
+  updateRequest,
+} from "./tree";
 import { buildOutbound, collectRequests, sendRequest } from "./request";
 import {
   downloadJson,
@@ -102,6 +112,36 @@ export default function App() {
     localStorage.setItem("pulse_view_mode", mode);
   };
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isSmallScreen, setIsSmallScreen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 960 : false
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("pulse_sidebar_collapsed") === "true";
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      const small = window.innerWidth <= 960;
+      setIsSmallScreen(small);
+      if (!small) {
+        setMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const toggleSidebar = () => {
+    if (isSmallScreen) {
+      setMobileSidebarOpen((prev) => !prev);
+    } else {
+      setSidebarCollapsed((prev) => {
+        const next = !prev;
+        localStorage.setItem("pulse_sidebar_collapsed", String(next));
+        return next;
+      });
+    }
+  };
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("pulse_theme");
     if (saved === "blue" || saved === "dark" || saved === "light") return saved;
@@ -136,6 +176,7 @@ export default function App() {
   const [collectionModalTab, setCollectionModalTab] = useState<CollectionTab>("scripts-pre");
   const [envOpen, setEnvOpen] = useState(false);
   const [editTargetEnvId, setEditTargetEnvId] = useState<string | null>(null);
+  const [editTargetVarKey, setEditTargetVarKey] = useState<string | null>(null);
   const [curlOpen, setCurlOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importDropdownOpen, setImportDropdownOpen] = useState(false);
@@ -560,7 +601,26 @@ export default function App() {
         }));
       };
 
-      const resp = await sendRequest(activeTab.draft, activeEnv, activeCol, handleEnvUpdate);
+      const handleColUpdate = (updatedVars: KeyValue[]) => {
+        if (!activeCol) return;
+        patchData((prev) => ({
+          ...prev,
+          collections: prev.collections.map((c) =>
+            c.id === activeCol.id ? { ...c, variables: updatedVars } : c
+          ),
+        }));
+      };
+
+      const resp = await sendRequest(
+        activeTab.draft,
+        activeEnv,
+        activeCol,
+        handleEnvUpdate,
+        {
+          requestId: activeTab.requestId,
+          onCollectionUpdate: handleColUpdate,
+        }
+      );
       setResponses((r) => ({ ...r, [tabId]: resp }));
       patchData((prev) => ({
         ...prev,
@@ -577,7 +637,7 @@ export default function App() {
       }));
 
       // Log request & response telemetry to console with fully resolved values
-      const outbound = buildOutbound(activeTab.draft, activeEnv, activeCol);
+      const outbound = resp.outbound || buildOutbound(activeTab.draft, activeEnv, activeCol);
       addConsoleLog({
         id: uid("clog"),
         timestamp: Date.now(),
@@ -730,6 +790,64 @@ export default function App() {
     flashImport(`Deleted environment "${env.name}"`);
   };
 
+  const duplicateEnv = (id: string) => {
+    const env = data.environments.find((e) => e.id === id);
+    if (!env) return;
+    const dup = duplicateEnvironment(env);
+    const idx = data.environments.findIndex((e) => e.id === id);
+    const next = [...data.environments];
+    next.splice(idx + 1, 0, dup);
+    patchData({
+      environments: next,
+      activeEnvId: dup.id,
+    });
+    flashImport(`Duplicated environment "${env.name}"`);
+  };
+
+  const updateEnvVariable = (varKey: string, newValue: string, targetEnvId?: string | null) => {
+    const envId = targetEnvId ?? data.activeEnvId;
+    if (!envId) {
+      if (data.environments.length > 0) {
+        const first = data.environments[0];
+        const next = data.environments.map((e) => {
+          if (e.id === first.id) {
+            const hasVar = e.variables.some((v) => v.key === varKey);
+            const nextVars = hasVar
+              ? e.variables.map((v) => (v.key === varKey ? { ...v, value: newValue, enabled: true } : v))
+              : [...e.variables, kv(varKey, newValue)];
+            return { ...e, variables: nextVars };
+          }
+          return e;
+        });
+        patchData({ environments: next, activeEnvId: first.id });
+        flashImport(`Set ${varKey} in "${first.name}"`);
+      } else {
+        const newEnv: Environment = {
+          id: uid("env"),
+          name: "Development",
+          variables: [kv(varKey, newValue)],
+        };
+        patchData({ environments: [newEnv], activeEnvId: newEnv.id });
+        flashImport(`Created "Development" environment with ${varKey}`);
+      }
+      return;
+    }
+
+    const next = data.environments.map((e) => {
+      if (e.id === envId) {
+        const hasVar = e.variables.some((v) => v.key === varKey);
+        const nextVars = hasVar
+          ? e.variables.map((v) => (v.key === varKey ? { ...v, value: newValue, enabled: true } : v))
+          : [...e.variables, kv(varKey, newValue)];
+        return { ...e, variables: nextVars };
+      }
+      return e;
+    });
+    const targetEnv = data.environments.find((e) => e.id === envId);
+    patchData({ environments: next });
+    flashImport(`Updated ${varKey} in "${targetEnv?.name || 'Environment'}"`);
+  };
+
   const newRequest = (collectionId: string, folderId: string | null) => {
     let targetColId = collectionId;
     let createdCol: Collection | null = null;
@@ -836,6 +954,41 @@ export default function App() {
       exportPostmanCollection(col)
     );
     flashImport(`Exported "${col.name}"`);
+  };
+
+  const duplicateCol = (id: string) => {
+    const col = data.collections.find((c) => c.id === id);
+    if (!col) return;
+    const dup = duplicateCollection(col);
+    const idx = data.collections.findIndex((c) => c.id === id);
+    const next = [...data.collections];
+    next.splice(idx + 1, 0, dup);
+    patchData({ collections: next });
+    flashImport(`Duplicated collection "${col.name}"`);
+  };
+
+  const duplicateTreeNode = (nodeId: string, collectionId: string) => {
+    const col = data.collections.find((c) => c.id === collectionId);
+    if (!col) return;
+    const parentId = parentFolderId(col.children, nodeId);
+    const findItem = (nodes: TreeNode[]): TreeNode | null => {
+      for (const n of nodes) {
+        if (n.id === nodeId) return n;
+        if (n.type === "folder") {
+          const f = findItem(n.children);
+          if (f) return f;
+        }
+      }
+      return null;
+    };
+    const target = findItem(col.children);
+    if (!target) return;
+    const duplicated = duplicateNode(target);
+    patchData((prev) => ({
+      ...prev,
+      collections: insertNode(prev.collections, collectionId, parentId ?? null, duplicated),
+    }));
+    flashImport(`Duplicated ${target.type} "${target.name}"`);
   };
 
   const flashImport = (msg: string) => {
@@ -1038,8 +1191,9 @@ export default function App() {
     </div>
   );
 
+  const effectivePanelLayout = isSmallScreen ? "response-bottom" : panelLayout;
   const isRightPanelOpen =
-    viewMode === "studio" && (panelLayout === "response-right" || snippetOpen);
+    viewMode === "studio" && !isSmallScreen && (effectivePanelLayout === "response-right" || snippetOpen);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1050,6 +1204,10 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         saveActive();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1090,15 +1248,18 @@ export default function App() {
     >
       <header className="topbar">
         <button
-          className="mobile-menu-btn"
-          onClick={() => setMobileSidebarOpen((prev) => !prev)}
-          title="Toggle Navigation Menu"
-          aria-label="Toggle Navigation Menu"
+          className={`sidebar-toggle-btn ${mobileSidebarOpen || (!isSmallScreen && !sidebarCollapsed) ? "active" : ""}`}
+          onClick={toggleSidebar}
+          title={
+            isSmallScreen
+              ? "Toggle Navigation Drawer"
+              : `Toggle Sidebar (${typeof navigator !== "undefined" && navigator.platform?.includes("Mac") ? "⌘B" : "Ctrl+B"})`
+          }
+          aria-label="Toggle Sidebar"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="18" x2="21" y2="18" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
         </button>
 
@@ -1118,7 +1279,7 @@ export default function App() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
-            Studio ({tabs.length})
+            <span className="view-tab-text">Studio ({tabs.length})</span>
           </button>
           <button
             className={`view-tab ${viewMode === "dashboard" ? "active" : ""}`}
@@ -1130,7 +1291,7 @@ export default function App() {
               <rect x="14" y="14" width="7" height="7" rx="1" />
               <rect x="3" y="14" width="7" height="7" rx="1" />
             </svg>
-            Dashboard
+            <span className="view-tab-text">Dashboard</span>
           </button>
         </div>
 
@@ -1181,6 +1342,25 @@ export default function App() {
           </button>
           {activeEnv && (
             <>
+              {(() => {
+                const bVal = activeEnv.variables.find((v) => v.key === "baseUrl" && v.enabled !== false)?.value;
+                return (
+                  <button
+                    type="button"
+                    className="top-env-baseurl-chip"
+                    title={`Active baseUrl: ${bVal || "not set"}. Click to edit.`}
+                    onClick={() => {
+                      setEditTargetEnvId(activeEnv.id);
+                      setEditTargetVarKey("baseUrl");
+                      setEnvOpen(true);
+                    }}
+                  >
+                    <span className="baseurl-tag">baseUrl:</span>
+                    <span className="baseurl-text">{bVal || '""'}</span>
+                    <span className="baseurl-pencil">✏️</span>
+                  </button>
+                );
+              })()}
               <button
                 className="top-env-action-btn"
                 title={`Edit environment "${activeEnv.name}"`}
@@ -1357,10 +1537,10 @@ export default function App() {
               e.target.value = "";
             }}
           />
-          {viewMode === "studio" && (
+          {viewMode === "studio" && !isSmallScreen && (
             <>
               <button
-                className="btn ghost sm"
+                className="btn ghost sm top-panel-layout-btn"
                 onClick={() =>
                   handleUpdatePanelLayout(
                     panelLayout === "response-bottom" ? "response-right" : "response-bottom"
@@ -1381,26 +1561,26 @@ export default function App() {
                 }}
               >
                 <span>{panelLayout === "response-bottom" ? "◫" : "▥"}</span>
-                <span>{panelLayout === "response-bottom" ? "Bottom" : "Side-by-Side"}</span>
+                <span className="top-btn-label">{panelLayout === "response-bottom" ? "Bottom" : "Side-by-Side"}</span>
               </button>
-              <button className="btn ghost" onClick={() => setSnippetOpen((v) => !v)}>
-                {snippetOpen ? "Hide code" : "Code"}
+              <button className="btn ghost sm top-code-btn" onClick={() => setSnippetOpen((v) => !v)}>
+                <span className="top-btn-label">{snippetOpen ? "Hide code" : "Code"}</span>
               </button>
             </>
           )}
 
           {/* Apple iOS Welcome Tour Button */}
           <button
-            className="btn ghost sm"
+            className="btn ghost sm top-welcome-btn"
             onClick={() => setWelcomeOpen(true)}
             title="Play Apple iOS Welcome Animation"
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: "11px", fontWeight: 600 }}
           >
             <span>✨</span>
-            <span>Welcome</span>
+            <span className="top-btn-label">Welcome</span>
           </button>
 
-          {/* Download Desktop App button on topbar corner */}
+          {/* Download Desktop App button hidden for now
           <button
             type="button"
             className="top-download-btn"
@@ -1427,12 +1607,15 @@ export default function App() {
             <span className="top-download-text">Download</span>
             <span className="top-download-badge">App</span>
           </button>
+          */}
         </div>
       </header>
       <div
         className={`layout ${isRightPanelOpen ? "with-snippet" : ""} ${
-          isResizingSidebar ? "is-resizing" : ""
-        } ${isResizingRight ? "is-resizing-h" : ""} ${isResizingBottom ? "is-resizing-v" : ""}`}
+          sidebarCollapsed && !isSmallScreen ? "sidebar-collapsed" : ""
+        } ${isResizingSidebar ? "is-resizing" : ""} ${
+          isResizingRight ? "is-resizing-h" : ""
+        } ${isResizingBottom ? "is-resizing-v" : ""}`}
         style={{
           "--sidebar": `${sidebarWidth}px`,
           "--right-panel": `${rightWidth}px`,
@@ -1472,6 +1655,7 @@ export default function App() {
           onRenameCollection={renameCollection}
           onDeleteCollection={deleteCollection}
           onExportCollection={exportCol}
+          onDuplicateCollection={duplicateCol}
           onRunCollection={(id) => {
             const col = data.collections.find((c) => c.id === id);
             if (col) setRunnerCol(col);
@@ -1492,6 +1676,7 @@ export default function App() {
               )
             );
           }}
+          onDuplicateNode={duplicateTreeNode}
           onImportClick={() => setImportOpen(true)}
           onImportCurl={() => setCurlOpen(true)}
           onSelectEnv={(id) => patchData({ activeEnvId: id })}
@@ -1504,6 +1689,7 @@ export default function App() {
             setEditTargetEnvId(id);
             setEnvOpen(true);
           }}
+          onDuplicateEnv={duplicateEnv}
           onDeleteEnv={deleteEnvironment}
         />
         {viewMode === "dashboard" ? (
@@ -1585,16 +1771,24 @@ export default function App() {
                       onSend={() => void sendActive()}
                       envName={activeEnv?.name ?? null}
                       env={activeEnv}
+                      environments={data.environments}
+                      onSelectEnv={(id) => patchData({ activeEnvId: id })}
+                      onUpdateEnvVariable={updateEnvVariable}
+                      onManageEnv={(id, targetVarKey) => {
+                        setEditTargetEnvId(id ?? activeEnv?.id ?? null);
+                        setEditTargetVarKey(targetVarKey ?? null);
+                        setEnvOpen(true);
+                      }}
                       collection={activeCol}
                       onEditCollection={openEditCollection}
                     />
                   </div>
 
                   {/* Bottom area: Either ResponsePane (if response-bottom) OR Snippet drawer (if response-right and snippetOpen) */}
-                  {(panelLayout === "response-bottom" || snippetOpen) && (
+                  {(effectivePanelLayout === "response-bottom" || snippetOpen) && (
                     <div
                       className={`editor-bottom-area ${
-                        panelLayout === "response-right" ? "snippet-drawer-area" : ""
+                        effectivePanelLayout === "response-right" ? "snippet-drawer-area" : ""
                       }`}
                       style={{ height: `${bottomHeight}px` }}
                     >
@@ -1603,7 +1797,7 @@ export default function App() {
                         onMouseDown={startResizingBottom}
                         title="Drag up or down to resize bottom panel"
                       />
-                      {panelLayout === "response-bottom" ? (
+                      {effectivePanelLayout === "response-bottom" ? (
                         <ResponsePane
                           response={responses[activeTab.id] ?? null}
                           sending={Boolean(sending[activeTab.id])}
@@ -1618,7 +1812,7 @@ export default function App() {
             </main>
 
             {/* Right sidebar column: Snippet (if response-bottom and snippetOpen) OR ResponsePane (if response-right) */}
-            {panelLayout === "response-bottom" && snippetOpen && (
+            {!isSmallScreen && effectivePanelLayout === "response-bottom" && snippetOpen && (
               <aside className="right-sidebar-panel snippet">
                 <div
                   className={`panel-resizer-h ${isResizingRight ? "active" : ""}`}
@@ -1629,7 +1823,7 @@ export default function App() {
               </aside>
             )}
 
-            {panelLayout === "response-right" && (
+            {!isSmallScreen && effectivePanelLayout === "response-right" && (
               <aside className="right-sidebar-panel">
                 <div
                   className={`panel-resizer-h ${isResizingRight ? "active" : ""}`}
@@ -1688,6 +1882,7 @@ export default function App() {
           initialTab={collectionModalTab}
           onClose={() => setEditingCollectionCol(null)}
           onSave={saveCollection}
+          onDuplicate={duplicateCol}
         />
       )}
       {envOpen && (
@@ -1695,12 +1890,14 @@ export default function App() {
           environments={data.environments}
           activeEnvId={data.activeEnvId}
           targetEnvId={editTargetEnvId}
+          targetVarKey={editTargetVarKey}
           onChange={(environments) => patchData({ environments })}
           onActive={(activeEnvId) => patchData({ activeEnvId })}
           onImportEnv={(file) => void importFile(file, true)}
           onClose={() => {
             setEnvOpen(false);
             setEditTargetEnvId(null);
+            setEditTargetVarKey(null);
           }}
         />
       )}

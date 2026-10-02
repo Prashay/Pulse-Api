@@ -2,23 +2,97 @@ import type {
   AuthConfig,
   Collection,
   Environment,
+  FolderItem,
   KeyValue,
   ProxyResponse,
   RequestSnapshot,
   TestResult,
 } from "./types";
 import { runScript } from "./scriptRunner";
+import { findParentFolders } from "./tree";
 
 export interface ResolvedVar {
   key: string;
   value: string;
-  source: "environment" | "collection";
+  source: "environment" | "collection" | "dynamic" | "variable";
   sourceName: string;
+}
+
+export function generateRandomGuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function isDynamicVariable(varName: string): boolean {
+  const clean = varName.trim().toLowerCase();
+  return (
+    clean === "$guid" ||
+    clean === "$randomuuid" ||
+    clean === "$timestamp" ||
+    clean === "$isotimestamp" ||
+    clean === "$randomint" ||
+    clean === "$randomalphanumeric" ||
+    clean === "$randomemail" ||
+    clean === "$randomboolean"
+  );
+}
+
+export function resolveDynamicVariable(varName: string): string | null {
+  const clean = varName.trim().toLowerCase();
+  switch (clean) {
+    case "$guid":
+    case "$randomuuid":
+      return generateRandomGuid();
+    case "$timestamp":
+      return Math.floor(Date.now() / 1000).toString();
+    case "$isotimestamp":
+      return new Date().toISOString();
+    case "$randomint":
+      return Math.floor(Math.random() * 1000).toString();
+    case "$randomalphanumeric":
+      return Math.random().toString(36).substring(2, 10);
+    case "$randomemail":
+      return `user_${Math.random().toString(36).substring(2, 7)}@example.com`;
+    case "$randomboolean":
+      return Math.random() >= 0.5 ? "true" : "false";
+    default:
+      return null;
+  }
+}
+
+export function getDynamicVariableDescription(varName: string): string {
+  const clean = varName.trim().toLowerCase();
+  switch (clean) {
+    case "$guid":
+    case "$randomuuid":
+      return "random UUID v4";
+    case "$timestamp":
+      return "Unix timestamp (s)";
+    case "$isotimestamp":
+      return "ISO 8601 timestamp";
+    case "$randomint":
+      return "random integer (0-1000)";
+    case "$randomalphanumeric":
+      return "random alphanumeric";
+    case "$randomemail":
+      return "random email address";
+    case "$randomboolean":
+      return "random boolean (true/false)";
+    default:
+      return "dynamic variable";
+  }
 }
 
 export function buildVariableMap(
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): Map<string, ResolvedVar> {
   const map = new Map<string, ResolvedVar>();
 
@@ -38,7 +112,7 @@ export function buildVariableMap(
     }
   }
 
-  // 2. Environment variables (highest priority, override collection variables)
+  // 2. Environment variables (higher priority, override collection variables)
   if (env && Array.isArray(env.variables)) {
     for (const v of env.variables) {
       const isEnabled = v.enabled !== false;
@@ -54,16 +128,47 @@ export function buildVariableMap(
     }
   }
 
+  // 3. Execution / Local variables (highest priority, override env & collection variables)
+  if (executionVars) {
+    const entries =
+      executionVars instanceof Map
+        ? executionVars.entries()
+        : Object.entries(executionVars);
+    for (const [k, val] of entries) {
+      if (k && String(k).trim()) {
+        const trimmedKey = String(k).trim();
+        map.set(trimmedKey, {
+          key: trimmedKey,
+          value: val != null ? String(val) : "",
+          source: "variable",
+          sourceName: "Execution Variable",
+        });
+      }
+    }
+  }
+
   return map;
 }
 
 export function lookupVariable(
   varName: string,
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): ResolvedVar | null {
-  const map = buildVariableMap(env, collection);
   const clean = varName.trim();
+
+  // Dynamic Postman variables (e.g. {{$guid}}, {{$timestamp}})
+  if (isDynamicVariable(clean)) {
+    return {
+      key: clean,
+      value: getDynamicVariableDescription(clean),
+      source: "dynamic",
+      sourceName: "Postman Dynamic Variable",
+    };
+  }
+
+  const map = buildVariableMap(env, collection, executionVars);
   if (map.has(clean)) return map.get(clean)!;
 
   // Case-insensitive fallback
@@ -91,11 +196,11 @@ export function extractVariables(text: string): string[] {
 export function interpolate(
   text: string,
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): string {
   if (!text || typeof text !== "string") return text || "";
-  const map = buildVariableMap(env, collection);
-  if (map.size === 0) return text;
+  if (!text.includes("{{")) return text;
 
   // Resolve recursively up to 5 passes for nested variables
   let result = text;
@@ -103,8 +208,16 @@ export function interpolate(
     if (!result.includes("{{")) break;
     let changed = false;
     result = result.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (match, raw) => {
-      const hit = lookupVariable(String(raw).trim(), env, collection);
-      if (hit != null) {
+      const varName = String(raw).trim();
+      // 1. Dynamic variables (e.g. $guid generates a random GUID each time)
+      const dynamicVal = resolveDynamicVariable(varName);
+      if (dynamicVal !== null) {
+        changed = true;
+        return dynamicVal;
+      }
+      // 2. Execution, environment, and collection variables
+      const hit = lookupVariable(varName, env, collection, executionVars);
+      if (hit != null && hit.source !== "dynamic") {
         changed = true;
         return String(hit.value);
       }
@@ -119,14 +232,15 @@ export function interpolate(
 function enabledPairs(
   rows: KeyValue[],
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): [string, string][] {
   if (!Array.isArray(rows)) return [];
   return rows
     .filter((r) => r.enabled !== false && r.key && String(r.key).trim())
     .map((r) => [
-      interpolate(String(r.key).trim(), env, collection),
-      interpolate(r.value != null ? String(r.value) : "", env, collection),
+      interpolate(String(r.key).trim(), env, collection, executionVars),
+      interpolate(r.value != null ? String(r.value) : "", env, collection, executionVars),
     ]);
 }
 
@@ -135,7 +249,8 @@ export function applyAuth(
   env: Environment | null,
   headers: Record<string, string>,
   url: URL,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): void {
   if (!auth) return;
 
@@ -144,14 +259,14 @@ export function applyAuth(
     for (const k of Object.keys(headers)) {
       if (k.toLowerCase() === "authorization") delete headers[k];
     }
-    const token = interpolate(String(auth.bearerToken).trim(), env, collection);
+    const token = interpolate(String(auth.bearerToken).trim(), env, collection, executionVars);
     headers.Authorization = `Bearer ${token}`;
   } else if (auth.type === "basic" && (auth.basicUser || auth.basicPass)) {
     for (const k of Object.keys(headers)) {
       if (k.toLowerCase() === "authorization") delete headers[k];
     }
-    const u = interpolate(String(auth.basicUser ?? ""), env, collection);
-    const p = interpolate(String(auth.basicPass ?? ""), env, collection);
+    const u = interpolate(String(auth.basicUser ?? ""), env, collection, executionVars);
+    const p = interpolate(String(auth.basicPass ?? ""), env, collection, executionVars);
     const raw = `${u}:${p}`;
     const token =
       typeof btoa !== "undefined"
@@ -159,8 +274,8 @@ export function applyAuth(
         : Buffer.from(raw).toString("base64");
     headers.Authorization = `Basic ${token}`;
   } else if (auth.type === "apikey" && auth.apiKeyName) {
-    const name = interpolate(String(auth.apiKeyName).trim(), env, collection);
-    const value = interpolate(auth.apiKeyValue != null ? String(auth.apiKeyValue) : "", env, collection);
+    const name = interpolate(String(auth.apiKeyName).trim(), env, collection, executionVars);
+    const value = interpolate(auth.apiKeyValue != null ? String(auth.apiKeyValue) : "", env, collection, executionVars);
     if (auth.apiKeyIn === "query") {
       url.searchParams.set(name, value);
     } else {
@@ -172,9 +287,10 @@ export function applyAuth(
 export function buildOutbound(
   snap: RequestSnapshot,
   env: Environment | null,
-  collection?: Collection | null
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
 ): { method: string; url: string; headers: Record<string, string>; body: string | null } {
-  let rawUrl = interpolate(snap.url.trim(), env, collection);
+  let rawUrl = interpolate(snap.url.trim(), env, collection, executionVars);
   if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i.test(rawUrl)) {
     rawUrl = `http://${rawUrl}`;
   } else if (rawUrl.startsWith("//")) {
@@ -187,16 +303,16 @@ export function buildOutbound(
     throw new Error(`Invalid URL: ${rawUrl || "(empty)"}`);
   }
 
-  for (const [key, value] of enabledPairs(snap.params, env, collection)) {
+  for (const [key, value] of enabledPairs(snap.params, env, collection, executionVars)) {
     url.searchParams.append(key, value);
   }
 
   const headers: Record<string, string> = {};
-  for (const [key, value] of enabledPairs(snap.headers, env, collection)) {
+  for (const [key, value] of enabledPairs(snap.headers, env, collection, executionVars)) {
     headers[key] = value;
   }
 
-  applyAuth(snap.auth, env, headers, url, collection);
+  applyAuth(snap.auth, env, headers, url, collection, executionVars);
 
   let body: string | null = null;
   if (snap.body && snap.bodyMode !== "none") {
@@ -205,8 +321,8 @@ export function buildOutbound(
       for (const line of snap.body.split("\n")) {
         const idx = line.indexOf("=");
         if (idx === -1) continue;
-        const k = interpolate(line.slice(0, idx).trim(), env, collection);
-        const v = interpolate(line.slice(idx + 1).trim(), env, collection);
+        const k = interpolate(line.slice(0, idx).trim(), env, collection, executionVars);
+        const v = interpolate(line.slice(idx + 1).trim(), env, collection, executionVars);
         if (k) params.append(k, v);
       }
       body = params.toString();
@@ -214,7 +330,7 @@ export function buildOutbound(
         headers["Content-Type"] = "application/x-www-form-urlencoded";
       }
     } else {
-      body = interpolate(snap.body, env, collection);
+      body = interpolate(snap.body, env, collection, executionVars);
       if (snap.bodyMode === "json" && !Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
         headers["Content-Type"] = "application/json";
       }
@@ -233,43 +349,115 @@ export function getProxyBaseUrl(): string {
   return "";
 }
 
+export interface SendRequestOptions {
+  requestId?: string | null;
+  parentFolders?: FolderItem[];
+  onCollectionUpdate?: (updatedVariables: KeyValue[]) => void;
+}
+
 export async function sendRequest(
   snap: RequestSnapshot,
   env: Environment | null,
   collection?: Collection | null,
-  onEnvUpdate?: (updatedVariables: KeyValue[]) => void
+  onEnvUpdate?: (updatedVariables: KeyValue[]) => void,
+  options?: SendRequestOptions
 ): Promise<ProxyResponse> {
   let effectiveSnap = { ...snap };
+  let effectiveEnv: Environment = env
+    ? { ...env, variables: [...(env.variables || [])] }
+    : { id: "in-memory-env", name: "In-Memory Env", variables: [] };
+  let effectiveCollection: Collection | null = collection
+    ? { ...collection, variables: [...(collection.variables || [])] }
+    : null;
+  const executionVars = new Map<string, string>();
   const allScriptLogs: string[] = [];
 
-  // 1. Run Pre-request Scripts: Collection-level script runs first, then Request-level script
-  const preScripts: { source: string; code: string }[] = [];
-  if (collection?.preScript && collection.preScript.trim()) {
-    preScripts.push({ source: `Collection "${collection.name}"`, code: collection.preScript });
+  // Determine parent folder hierarchy if applicable
+  let parentFolders: FolderItem[] = options?.parentFolders || [];
+  if (parentFolders.length === 0 && options?.requestId && collection?.children) {
+    const found = findParentFolders(collection.children, options.requestId);
+    if (found) parentFolders = found;
   }
-  if (snap.preScript && snap.preScript.trim()) {
-    preScripts.push({ source: "Request", code: snap.preScript });
+
+  // 1. Run Pre-request Scripts in Postman order:
+  //    Collection Pre-request -> Folder(s) Pre-request (outer to inner) -> Request Pre-request
+  const preScripts: { source: string; code: string }[] = [];
+  if (effectiveCollection?.preScript && effectiveCollection.preScript.trim()) {
+    preScripts.push({
+      source: `Collection "${effectiveCollection.name}"`,
+      code: effectiveCollection.preScript,
+    });
+  }
+  for (const folder of parentFolders) {
+    if (folder.preScript && folder.preScript.trim()) {
+      preScripts.push({
+        source: `Folder "${folder.name}"`,
+        code: folder.preScript,
+      });
+    }
+  }
+  if (effectiveSnap.preScript && effectiveSnap.preScript.trim()) {
+    preScripts.push({
+      source: `Request "${effectiveSnap.name || "Draft"}"`,
+      code: effectiveSnap.preScript,
+    });
   }
 
   for (const item of preScripts) {
     try {
-      const preResult = await runScript("pre", item.code, env, effectiveSnap, null);
-      if (preResult.envModified && onEnvUpdate) {
-        onEnvUpdate(preResult.updatedEnvVariables);
+      const preResult = await runScript(
+        "pre",
+        item.code,
+        effectiveEnv,
+        effectiveSnap,
+        null,
+        effectiveCollection,
+        executionVars
+      );
+
+      // Immediately propagate updated environment variables
+      if (preResult.envModified) {
+        effectiveEnv = { ...effectiveEnv, variables: preResult.updatedEnvVariables };
+        if (onEnvUpdate) {
+          onEnvUpdate(preResult.updatedEnvVariables);
+        }
       }
+
+      // Immediately propagate updated collection variables
+      if (preResult.collectionModified && effectiveCollection) {
+        effectiveCollection = {
+          ...effectiveCollection,
+          variables: preResult.updatedCollectionVariables,
+        };
+        if (options?.onCollectionUpdate) {
+          options.onCollectionUpdate(preResult.updatedCollectionVariables);
+        }
+      }
+
+      // Propagate transient execution variables
+      if (preResult.executionVariables) {
+        for (const [k, v] of Object.entries(preResult.executionVariables)) {
+          executionVars.set(k, v);
+        }
+      }
+
+      // Propagate mutated request snapshot
       if (preResult.mutatedRequest) {
         effectiveSnap = { ...effectiveSnap, ...preResult.mutatedRequest };
       }
+
       for (const log of preResult.consoleLogs) {
         allScriptLogs.push(`[Pre-request (${item.source})] ${log.message}`);
       }
     } catch (err) {
-      allScriptLogs.push(`[Pre-request Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`);
+      allScriptLogs.push(
+        `[Pre-request Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
-  // 2. Build Outbound Request with interpolated variables
-  const outbound = buildOutbound(effectiveSnap, env, collection);
+  // 2. Build Outbound Request with interpolated variables (including newly set collection/env/execution vars)
+  const outbound = buildOutbound(effectiveSnap, effectiveEnv, effectiveCollection, executionVars);
 
   // 3. Dispatch Request: Native Desktop IPC (if available) -> Local Proxy -> Direct Fetch fallback
   let responseData: ProxyResponse | null = null;
@@ -369,21 +557,66 @@ export async function sendRequest(
     }
   }
 
-  // 4. Run Post-response (Tests) Scripts: Request-level tests first, then Collection-level tests
-  const postScripts: { source: string; code: string }[] = [];
-  if (snap.postScript && snap.postScript.trim()) {
-    postScripts.push({ source: "Request", code: snap.postScript });
+  // Attach outbound request representation
+  if (responseData) {
+    responseData.outbound = outbound;
   }
-  if (collection?.postScript && collection.postScript.trim()) {
-    postScripts.push({ source: `Collection "${collection.name}"`, code: collection.postScript });
+
+  // 4. Run Post-response (Tests) Scripts in Postman order:
+  //    Collection Tests -> Folder(s) Tests (outer to inner) -> Request Tests
+  const postScripts: { source: string; code: string }[] = [];
+  if (effectiveCollection?.postScript && effectiveCollection.postScript.trim()) {
+    postScripts.push({
+      source: `Collection "${effectiveCollection.name}"`,
+      code: effectiveCollection.postScript,
+    });
+  }
+  for (const folder of parentFolders) {
+    if (folder.postScript && folder.postScript.trim()) {
+      postScripts.push({
+        source: `Folder "${folder.name}"`,
+        code: folder.postScript,
+      });
+    }
+  }
+  if (effectiveSnap.postScript && effectiveSnap.postScript.trim()) {
+    postScripts.push({
+      source: `Request "${effectiveSnap.name || "Draft"}"`,
+      code: effectiveSnap.postScript,
+    });
   }
 
   const allTestResults: TestResult[] = [];
   for (const item of postScripts) {
     try {
-      const postResult = await runScript("post", item.code, env, effectiveSnap, responseData);
-      if (postResult.envModified && onEnvUpdate) {
-        onEnvUpdate(postResult.updatedEnvVariables);
+      const postResult = await runScript(
+        "post",
+        item.code,
+        effectiveEnv,
+        effectiveSnap,
+        responseData,
+        effectiveCollection,
+        executionVars
+      );
+      if (postResult.envModified) {
+        effectiveEnv = { ...effectiveEnv, variables: postResult.updatedEnvVariables };
+        if (onEnvUpdate) {
+          onEnvUpdate(postResult.updatedEnvVariables);
+        }
+      }
+      if (postResult.collectionModified && effectiveCollection) {
+        effectiveCollection = {
+          ...effectiveCollection,
+          variables: postResult.updatedCollectionVariables,
+        };
+        if (options?.onCollectionUpdate) {
+          options.onCollectionUpdate(postResult.updatedCollectionVariables);
+        }
+      }
+      if (postResult.executionVariables) {
+        for (const [k, v] of Object.entries(postResult.executionVariables)) {
+          executionVars.set(k, v);
+        }
       }
       allTestResults.push(...postResult.testResults);
       for (const log of postResult.consoleLogs) {

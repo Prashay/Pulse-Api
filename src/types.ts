@@ -124,6 +124,12 @@ export interface ProxyResponse {
   size: number;
   testResults?: TestResult[];
   scriptLogs?: string[];
+  outbound?: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: string | null;
+  };
 }
 
 export interface ConsoleLog {

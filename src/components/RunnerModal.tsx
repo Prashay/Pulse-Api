@@ -60,12 +60,14 @@ export function RunnerModal({
       if (stopRef.current) break;
       const resolvedUrl = interpolate(req.url, currentEnv, collection);
       try {
-        const resp = await sendRequest(req, currentEnv, collection);
+        const resp = await sendRequest(req, currentEnv, collection, undefined, {
+          requestId: req.id,
+        });
         const item: RunResult = {
           requestId: req.id,
           name: req.name,
           method: req.method,
-          url: resolvedUrl,
+          url: resp.outbound?.url || resolvedUrl,
           status: resp.status,
           statusText: resp.statusText,
           time: resp.time,

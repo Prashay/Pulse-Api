@@ -20,6 +20,10 @@ interface Props {
   reqTab: ReqTab;
   envName: string | null;
   env?: Environment | null;
+  environments?: Environment[];
+  onSelectEnv?: (id: string | null) => void;
+  onUpdateEnvVariable?: (varKey: string, newValue: string, targetEnvId?: string | null) => void;
+  onManageEnv?: (envId?: string | null, targetVarKey?: string) => void;
   collection?: Collection | null;
   onEditCollection?: (id: string, initialTab?: "scripts-pre" | "scripts-post" | "variables" | "overview") => void;
   onReqTab: (t: ReqTab) => void;
@@ -29,6 +33,18 @@ interface Props {
 
 export function RequestPane(props: Props) {
   const { draft, env, collection } = props;
+
+  const [editingVar, setEditingVar] = useState<string | null>(null);
+  const [editVarValue, setEditVarValue] = useState<string>("");
+  const [editTargetEnvId, setEditTargetEnvId] = useState<string | null>(env?.id ?? null);
+  const [savedFlash, setSavedFlash] = useState<boolean>(false);
+  const varInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (env?.id && !editTargetEnvId) {
+      setEditTargetEnvId(env.id);
+    }
+  }, [env?.id]);
 
   const isWebSocket =
     draft.method === "WS" ||
@@ -196,6 +212,34 @@ export function RequestPane(props: Props) {
     }
   };
 
+  const handleOpenVarEditor = (varName: string) => {
+    const currentEnv =
+      (props.environments || []).find((e) => e.id === (editTargetEnvId || env?.id)) ||
+      env ||
+      props.environments?.[0];
+    const existing = currentEnv?.variables.find((v) => v.key === varName);
+    setEditingVar(varName);
+    setEditVarValue(existing ? existing.value : "");
+    setEditTargetEnvId(currentEnv?.id ?? null);
+    setTimeout(() => {
+      varInputRef.current?.focus();
+      varInputRef.current?.select();
+    }, 60);
+  };
+
+  const handleSaveVar = (explicitVal?: string) => {
+    if (!editingVar) return;
+    const valToSave = (explicitVal !== undefined ? explicitVal : editVarValue).trim();
+    props.onUpdateEnvVariable?.(editingVar, valToSave, editTargetEnvId || env?.id);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2000);
+  };
+
+  const baseUrlHit = useMemo(() => {
+    return lookupVariable("baseUrl", env ?? null, collection ?? null);
+  }, [env, collection]);
+  const hasBaseUrlInUrl = detectedUrlVars.includes("baseUrl");
+
   // Helper to render live variable pills in any tab
   const renderVariableChips = (vars: string[]) => {
     if (vars.length === 0) return null;
@@ -208,23 +252,36 @@ export function RequestPane(props: Props) {
         <div className="res-vars-pills">
           {vars.map((v) => {
             const hit = lookupVariable(v, env ?? null, collection ?? null);
-            return hit ? (
+            const isEditingThis = editingVar === v;
+            if (!hit) {
+              return (
+                <span
+                  key={v}
+                  className={`res-var-chip missing interactive ${isEditingThis ? "chip-active" : ""}`}
+                  title={`Variable not defined in active environment (${env?.name || "No Environment"}). Click to define it.`}
+                  onClick={() => handleOpenVarEditor(v)}
+                >
+                  ⚠️ {`{{${v}}}`} <span className="chip-missing-tag">+ Set</span>
+                </span>
+              );
+            }
+
+            const isDynamic = hit.source === "dynamic";
+            return (
               <span
                 key={v}
-                className="res-var-chip ok"
-                title={`From ${hit.sourceName}: ${v} = ${hit.value}`}
+                className={`res-var-chip ok interactive ${isDynamic ? "dynamic-var-chip" : ""} ${isEditingThis ? "chip-active" : ""}`}
+                title={
+                  isDynamic
+                    ? `Dynamic Postman variable: generates a random ${hit.value} on each send`
+                    : `From ${hit.sourceName}: ${v} = ${hit.value}. Click to edit.`
+                }
+                onClick={() => !isDynamic && handleOpenVarEditor(v)}
               >
                 <span className="chip-key">{`{{${v}}}`}</span>
                 <span className="chip-arrow">→</span>
-                <span className="chip-val">{hit.value || '""'}</span>
-              </span>
-            ) : (
-              <span
-                key={v}
-                className="res-var-chip missing"
-                title={`Variable not defined in active environment (${env?.name || "No Environment"})`}
-              >
-                ⚠️ {`{{${v}}}`} <span className="chip-missing-tag">unresolved</span>
+                <span className="chip-val">{isDynamic ? `🎲 ${hit.value}` : (hit.value || '""')}</span>
+                {!isDynamic && <span className="chip-edit-icon" title="Edit variable">✏️</span>}
               </span>
             );
           })}
@@ -295,6 +352,22 @@ export function RequestPane(props: Props) {
               }
             }}
           />
+          {hasBaseUrlInUrl && (
+            <button
+              type="button"
+              className={`url-baseurl-quick-tag ${editingVar === "baseUrl" ? "active" : ""}`}
+              onClick={() => {
+                if (editingVar === "baseUrl") setEditingVar(null);
+                else handleOpenVarEditor("baseUrl");
+              }}
+              title={`baseUrl is provided by ${baseUrlHit?.sourceName || env?.name || "environment"}. Click to edit.`}
+            >
+              <span className="base-tag-icon">🌐</span>
+              <span className="base-tag-label">baseUrl:</span>
+              <span className="base-tag-val">{baseUrlHit?.value || "unresolved"}</span>
+              <span className="base-tag-pencil">✏️</span>
+            </button>
+          )}
         </div>
         {isWebSocket ? (
           <button
@@ -337,29 +410,251 @@ export function RequestPane(props: Props) {
           <span className="res-url" title={resolvedUrl}>
             {resolvedUrl}
           </span>
+
+          {/* Quick Edit baseUrl Button */}
+          {hasBaseUrlInUrl && (
+            <button
+              type="button"
+              className={`res-edit-base-btn ${editingVar === "baseUrl" ? "active" : ""}`}
+              onClick={() => {
+                if (editingVar === "baseUrl") setEditingVar(null);
+                else handleOpenVarEditor("baseUrl");
+              }}
+              title={
+                baseUrlHit
+                  ? `Click to edit baseUrl (${baseUrlHit.value}) in ${baseUrlHit.sourceName}`
+                  : `baseUrl is not set in active env (${env?.name || "No Environment"}). Click to define it.`
+              }
+            >
+              <span className="res-edit-pencil">✏️</span>
+              <span className="res-edit-title">Edit baseUrl</span>
+              {baseUrlHit ? (
+                <span className="res-edit-current-val">{baseUrlHit.value}</span>
+              ) : (
+                <span className="res-edit-unresolved-tag">not set</span>
+              )}
+            </button>
+          )}
+
           <div className="res-vars-pills">
             {detectedUrlVars.map((v) => {
               const hit = lookupVariable(v, env ?? null, collection ?? null);
+              const isEditingThis = editingVar === v;
               return hit ? (
                 <span
                   key={v}
-                  className="res-var-chip ok"
-                  title={`From ${hit.sourceName}: ${v} = ${hit.value}`}
+                  className={`res-var-chip ok interactive ${isEditingThis ? "chip-active" : ""}`}
+                  title={`From ${hit.sourceName}: ${v} = ${hit.value}. Click to edit.`}
+                  onClick={() => handleOpenVarEditor(v)}
                 >
                   <span className="chip-key">{`{{${v}}}`}</span>
                   <span className="chip-arrow">→</span>
                   <span className="chip-val">{hit.value || '""'}</span>
+                  <span className="chip-edit-icon" title="Edit variable">✏️</span>
                 </span>
               ) : (
                 <span
                   key={v}
-                  className="res-var-chip missing"
-                  title={`Missing in active environment (${env?.name || "none"})`}
+                  className={`res-var-chip missing interactive ${isEditingThis ? "chip-active" : ""}`}
+                  title={`Missing in active environment (${env?.name || "none"}). Click to define it.`}
+                  onClick={() => handleOpenVarEditor(v)}
                 >
-                  ⚠️ {`{{${v}}}`} <span className="chip-missing-tag">unresolved</span>
+                  ⚠️ {`{{${v}}}`} <span className="chip-missing-tag">+ Set</span>
                 </span>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Variable Editor Drawer */}
+      {editingVar && (
+        <div className="var-quick-editor-box">
+          <div className="var-quick-editor-header">
+            <div className="var-header-left">
+              <span className="var-icon">🌐</span>
+              <span className="var-title">
+                Edit Variable: <code>{`{{${editingVar}}}`}</code>
+              </span>
+              {env ? (
+                <span className="var-env-badge ok">
+                  Env: <strong>{env.name}</strong>
+                </span>
+              ) : (
+                <span className="var-env-badge warn">⚠️ No Environment Active</span>
+              )}
+            </div>
+            <div className="var-header-right">
+              {props.environments && props.environments.length > 0 && (
+                <div className="var-env-select-wrap">
+                  <span className="var-env-select-label">Target Env:</span>
+                  <select
+                    className="var-env-switcher"
+                    value={editTargetEnvId || env?.id || ""}
+                    onChange={(e) => {
+                      const newEnvId = e.target.value || null;
+                      setEditTargetEnvId(newEnvId);
+                      if (newEnvId) {
+                        props.onSelectEnv?.(newEnvId);
+                        const targetE = props.environments?.find((envItem) => envItem.id === newEnvId);
+                        const vObj = targetE?.variables.find((v) => v.key === editingVar);
+                        if (vObj) setEditVarValue(vObj.value);
+                      }
+                    }}
+                    title="Change target environment"
+                  >
+                    {props.environments.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button
+                type="button"
+                className="var-close-btn"
+                onClick={() => setEditingVar(null)}
+                aria-label="Close editor"
+                title="Close (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="var-quick-editor-body">
+            <div className="var-input-row">
+              <label className="var-input-label">{editingVar} value:</label>
+              <div className="var-input-wrapper">
+                <input
+                  ref={varInputRef}
+                  type="text"
+                  className="var-value-input"
+                  value={editVarValue}
+                  placeholder={
+                    editingVar === "baseUrl"
+                      ? "e.g. http://127.0.0.1:3001 or http://localhost:8080"
+                      : `Enter value for ${editingVar}...`
+                  }
+                  onChange={(e) => setEditVarValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveVar();
+                    if (e.key === "Escape") setEditingVar(null);
+                  }}
+                />
+                {editVarValue && (
+                  <button
+                    type="button"
+                    className="var-clear-input"
+                    onClick={() => setEditVarValue("")}
+                    title="Clear"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn primary var-save-btn"
+                onClick={() => handleSaveVar()}
+              >
+                {savedFlash ? "✓ Saved!" : "Save & Apply"}
+              </button>
+            </div>
+
+            {editingVar === "baseUrl" && (
+              <div className="var-presets-row">
+                <span className="presets-label">⚡ 1-Click Base URL Presets:</span>
+                <div className="presets-list">
+                  <button
+                    type="button"
+                    className="preset-chip local"
+                    onClick={() => {
+                      setEditVarValue("http://127.0.0.1:3001");
+                      handleSaveVar("http://127.0.0.1:3001");
+                    }}
+                    title="Pulse Built-in Proxy & Mock Server on port 3001"
+                  >
+                    ⚡ Pulse Local Mock (3001)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setEditVarValue("http://localhost:8080");
+                      handleSaveVar("http://localhost:8080");
+                    }}
+                    title="Common Local Backend on port 8080"
+                  >
+                    💻 localhost:8080
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setEditVarValue("http://localhost:3000");
+                      handleSaveVar("http://localhost:3000");
+                    }}
+                    title="Node.js / React / Next.js on port 3000"
+                  >
+                    🚀 localhost:3000
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setEditVarValue("http://localhost:5000");
+                      handleSaveVar("http://localhost:5000");
+                    }}
+                    title="Python Flask / .NET on port 5000"
+                  >
+                    🐍 localhost:5000
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setEditVarValue("https://httpbin.org");
+                      handleSaveVar("https://httpbin.org");
+                    }}
+                    title="Public HTTPBin Echo Service"
+                  >
+                    🌐 httpbin.org
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setEditVarValue("https://jsonplaceholder.typicode.com");
+                      handleSaveVar("https://jsonplaceholder.typicode.com");
+                    }}
+                    title="Public JSONPlaceholder Test API"
+                  >
+                    📦 jsonplaceholder
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="var-quick-editor-footer">
+              <span className="var-hint">
+                💡 Updates <code>{`{{${editingVar}}}`}</code> in environment. URL previews and requests update immediately.
+              </span>
+              {props.onManageEnv && (
+                <button
+                  type="button"
+                  className="btn ghost sm var-manage-all-btn"
+                  onClick={() => {
+                    setEditingVar(null);
+                    props.onManageEnv?.(editTargetEnvId || env?.id || null, editingVar);
+                  }}
+                  title="Open full environment manager to view all variables, duplicate, or export"
+                >
+                  ⚙️ Open Full Environment Settings
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -521,12 +816,13 @@ export function RequestPane(props: Props) {
             {/* Params Tab */}
             {props.reqTab === "params" && (
               <>
-                <div className="kv-caption">Query Parameters</div>
                 <KeyValueEditor
                   rows={draft.params}
                   onChange={(params) => props.onChange({ params })}
                   keyPlaceholder="Key"
                   valuePlaceholder="Value"
+                  title="Query Parameters"
+                  allowBulkEdit={true}
                 />
               </>
             )}
@@ -624,6 +920,8 @@ export function RequestPane(props: Props) {
                   onChange={(headers) => props.onChange({ headers })}
                   keyPlaceholder="Header"
                   valuePlaceholder="Value"
+                  title="Headers"
+                  allowBulkEdit={true}
                 />
                 {/* Live Header Variable Resolution Feedback */}
                 {renderVariableChips(headerVars)}

@@ -1,4 +1,5 @@
-import type { Collection, FolderItem, RequestItem, TreeNode } from "./types";
+import type { Collection, Environment, FolderItem, RequestItem, TreeNode } from "./types";
+import { uid } from "./id";
 
 export function findRequest(
   collections: Collection[],
@@ -7,6 +8,23 @@ export function findRequest(
   for (const col of collections) {
     const hit = findInNodes(col.children, requestId);
     if (hit) return { collection: col, request: hit };
+  }
+  return null;
+}
+
+export function findParentFolders(
+  nodes: TreeNode[],
+  targetRequestId: string,
+  ancestors: FolderItem[] = []
+): FolderItem[] | null {
+  for (const node of nodes) {
+    if (node.type === "request" && node.id === targetRequestId) {
+      return ancestors;
+    }
+    if (node.type === "folder") {
+      const hit = findParentFolders(node.children, targetRequestId, [...ancestors, node]);
+      if (hit !== null) return hit;
+    }
   }
   return null;
 }
@@ -127,17 +145,61 @@ export function parentFolderId(
 }
 
 export function duplicateNode(node: TreeNode): TreeNode {
-  const { uid } = { uid: (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}` };
   if (node.type === "request") {
-    return { ...node, id: uid("req"), name: `${node.name} Copy` };
+    return {
+      ...node,
+      id: uid("req"),
+      name: `${node.name} Copy`,
+      params: (node.params || []).map((p) => ({ ...p, id: uid("kv") })),
+      headers: (node.headers || []).map((h) => ({ ...h, id: uid("kv") })),
+      auth: { ...node.auth },
+    };
   }
   const folder: FolderItem = {
     ...node,
     id: uid("fld"),
     name: `${node.name} Copy`,
-    children: node.children.map(duplicateNode),
+    children: (node.children || []).map(duplicateNode),
   };
   return folder;
+}
+
+export function duplicateCollection(col: Collection): Collection {
+  const cloneNode = (node: TreeNode): TreeNode => {
+    if (node.type === "request") {
+      return {
+        ...node,
+        id: uid("req"),
+        params: (node.params || []).map((p) => ({ ...p, id: uid("kv") })),
+        headers: (node.headers || []).map((h) => ({ ...h, id: uid("kv") })),
+        auth: { ...node.auth },
+      };
+    }
+    return {
+      ...node,
+      id: uid("fld"),
+      children: (node.children || []).map(cloneNode),
+    };
+  };
+
+  return {
+    ...col,
+    id: uid("col"),
+    name: `${col.name} Copy`,
+    children: (col.children || []).map(cloneNode),
+    variables: (col.variables || []).map((v) => ({ ...v, id: uid("kv") })),
+    preScript: col.preScript,
+    postScript: col.postScript,
+  };
+}
+
+export function duplicateEnvironment(env: Environment): Environment {
+  return {
+    ...env,
+    id: uid("env"),
+    name: `${env.name} Copy`,
+    variables: (env.variables || []).map((v) => ({ ...v, id: uid("kv") })),
+  };
 }
 
 export function collectFolders(

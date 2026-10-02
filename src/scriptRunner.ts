@@ -1,8 +1,12 @@
-import type { Environment, KeyValue, ProxyResponse, RequestSnapshot, TestResult } from "./types";
+import type { Collection, Environment, HttpMethod, KeyValue, ProxyResponse, RequestSnapshot, TestResult } from "./types";
+import { interpolate } from "./request";
 
 export interface ScriptExecutionResult {
   updatedEnvVariables: KeyValue[];
   envModified: boolean;
+  updatedCollectionVariables: KeyValue[];
+  collectionModified: boolean;
+  executionVariables: Record<string, string>;
   testResults: TestResult[];
   consoleLogs: { type: "log" | "info" | "warn" | "error"; message: string }[];
   mutatedRequest?: Partial<RequestSnapshot>;
@@ -153,16 +157,52 @@ function createExpect(actual: unknown) {
 /**
  * Runs a pre-request script or post-response (test) script in a sandboxed execution context.
  */
+function createVarProxy<T extends object>(
+  target: T,
+  onGet: (prop: string) => any,
+  onSet: (prop: string, val: any) => void
+) {
+  return new Proxy(target, {
+    get(obj: any, prop: string | symbol) {
+      if (typeof prop === "symbol") return obj[prop];
+      if (prop in obj || typeof obj[prop] === "function") {
+        return obj[prop];
+      }
+      return onGet(prop);
+    },
+    set(obj: any, prop: string | symbol, value: any) {
+      if (typeof prop === "symbol") {
+        obj[prop] = value;
+        return true;
+      }
+      onSet(prop, value);
+      return true;
+    },
+    has(obj: any, prop: string | symbol) {
+      if (typeof prop === "symbol") return prop in obj;
+      return prop in obj || onGet(prop) !== undefined;
+    },
+  });
+}
+
+/**
+ * Runs a pre-request script or post-response (test) script in a sandboxed execution context.
+ */
 export async function runScript(
   type: "pre" | "post",
   code: string,
   env: Environment | null,
   req: RequestSnapshot,
-  resp?: ProxyResponse | null
+  resp?: ProxyResponse | null,
+  collection?: Collection | null,
+  initialExecutionVars?: Record<string, string> | Map<string, string> | null
 ): Promise<ScriptExecutionResult> {
   const result: ScriptExecutionResult = {
     updatedEnvVariables: env ? [...env.variables] : [],
     envModified: false,
+    updatedCollectionVariables: collection?.variables ? [...collection.variables] : [],
+    collectionModified: false,
+    executionVariables: {},
     testResults: [],
     consoleLogs: [],
   };
@@ -171,7 +211,7 @@ export async function runScript(
     return result;
   }
 
-  // Work with a mutable copy of environment variables
+  // Work with mutable copies of environment & collection variables
   const envMap = new Map<string, string>();
   if (env && Array.isArray(env.variables)) {
     for (const v of env.variables) {
@@ -179,14 +219,35 @@ export async function runScript(
     }
   }
 
-  // Variables map (local variables scoped to execution)
-  const varMap = new Map<string, string>(envMap);
+  const colMap = new Map<string, string>();
+  if (collection && Array.isArray(collection.variables)) {
+    for (const v of collection.variables) {
+      if (v.key) colMap.set(v.key.trim(), String(v.value ?? ""));
+    }
+  }
+
+  // Execution variables scoped to this request execution
+  const varMap = new Map<string, string>();
+  if (initialExecutionVars) {
+    const entries =
+      initialExecutionVars instanceof Map
+        ? initialExecutionVars.entries()
+        : Object.entries(initialExecutionVars);
+    for (const [k, val] of entries) {
+      if (k) varMap.set(String(k).trim(), String(val ?? ""));
+    }
+  }
 
   const envObj = {
     get: (key: string) => envMap.get(String(key).trim()),
     set: (key: string, value: unknown) => {
       const k = String(key).trim();
-      const val = value != null ? (typeof value === "object" ? JSON.stringify(value) : String(value)) : "";
+      const val =
+        value != null
+          ? typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value)
+          : "";
       envMap.set(k, val);
       result.envModified = true;
     },
@@ -198,18 +259,86 @@ export async function runScript(
         result.envModified = true;
       }
     },
+    clear: () => {
+      envMap.clear();
+      result.envModified = true;
+    },
     toObject: () => Object.fromEntries(envMap.entries()),
   };
 
-  const variablesObj = {
-    get: (key: string) => varMap.get(String(key).trim()),
+  const colObj = {
+    get: (key: string) => colMap.get(String(key).trim()),
     set: (key: string, value: unknown) => {
       const k = String(key).trim();
-      const val = value != null ? (typeof value === "object" ? JSON.stringify(value) : String(value)) : "";
+      const val =
+        value != null
+          ? typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value)
+          : "";
+      colMap.set(k, val);
+      result.collectionModified = true;
+    },
+    has: (key: string) => colMap.has(String(key).trim()),
+    unset: (key: string) => {
+      const k = String(key).trim();
+      if (colMap.has(k)) {
+        colMap.delete(k);
+        result.collectionModified = true;
+      }
+    },
+    clear: () => {
+      colMap.clear();
+      result.collectionModified = true;
+    },
+    toObject: () => Object.fromEntries(colMap.entries()),
+  };
+
+  const variablesObj = {
+    get: (key: string) => {
+      const k = String(key).trim();
+      if (varMap.has(k)) return varMap.get(k);
+      if (envMap.has(k)) return envMap.get(k);
+      if (colMap.has(k)) return colMap.get(k);
+      return undefined;
+    },
+    set: (key: string, value: unknown) => {
+      const k = String(key).trim();
+      const val =
+        value != null
+          ? typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value)
+          : "";
       varMap.set(k, val);
     },
-    has: (key: string) => varMap.has(String(key).trim()),
+    has: (key: string) => {
+      const k = String(key).trim();
+      return varMap.has(k) || envMap.has(k) || colMap.has(k);
+    },
+    replaceIn: (str: string) => interpolate(String(str ?? ""), env, collection, varMap),
+    toObject: () => ({
+      ...Object.fromEntries(colMap.entries()),
+      ...Object.fromEntries(envMap.entries()),
+      ...Object.fromEntries(varMap.entries()),
+    }),
   };
+
+  const envProxy = createVarProxy(
+    envObj,
+    (p) => envObj.get(p),
+    (p, v) => envObj.set(p, v)
+  );
+  const colProxy = createVarProxy(
+    colObj,
+    (p) => colObj.get(p),
+    (p, v) => colObj.set(p, v)
+  );
+  const varProxy = createVarProxy(
+    variablesObj,
+    (p) => variablesObj.get(p),
+    (p, v) => variablesObj.set(p, v)
+  );
 
   // Scoped console that routes to our result logs
   const scopedConsole = {
@@ -228,33 +357,95 @@ export async function runScript(
   };
 
   // Request proxy object
-  const reqHeadersCopy = [...req.headers];
+  let currentUrl = req.url;
+  let currentMethod = req.method;
+  let currentBody = req.body;
+  const reqHeadersCopy = [...(req.headers || [])];
+
   const reqObj = {
-    url: req.url,
-    method: req.method,
-    body: req.body,
+    get url() {
+      return currentUrl;
+    },
+    set url(val: string) {
+      currentUrl = String(val ?? "");
+      result.mutatedRequest = { ...result.mutatedRequest, url: currentUrl };
+    },
+    get method() {
+      return currentMethod;
+    },
+    set method(val: string) {
+      currentMethod = String(val ?? "").toUpperCase() as HttpMethod;
+      result.mutatedRequest = { ...result.mutatedRequest, method: currentMethod };
+    },
+    get body() {
+      return currentBody;
+    },
+    set body(val: unknown) {
+      if (typeof val === "object" && val !== null && "raw" in val) {
+        currentBody = String((val as { raw: unknown }).raw ?? "");
+      } else {
+        currentBody = String(val ?? "");
+      }
+      result.mutatedRequest = { ...result.mutatedRequest, body: currentBody };
+    },
     headers: {
       add: (headerOrKey: { key: string; value: string } | string, val?: string) => {
         if (typeof headerOrKey === "string") {
-          reqHeadersCopy.push({ id: `h_${Date.now()}`, key: headerOrKey, value: String(val ?? ""), enabled: true });
+          reqHeadersCopy.push({
+            id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            key: headerOrKey,
+            value: String(val ?? ""),
+            enabled: true,
+          });
         } else if (headerOrKey && headerOrKey.key) {
-          reqHeadersCopy.push({ id: `h_${Date.now()}`, key: headerOrKey.key, value: String(headerOrKey.value ?? ""), enabled: true });
+          reqHeadersCopy.push({
+            id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            key: headerOrKey.key,
+            value: String(headerOrKey.value ?? ""),
+            enabled: true,
+          });
         }
-        result.mutatedRequest = { ...result.mutatedRequest, headers: reqHeadersCopy };
+        result.mutatedRequest = { ...result.mutatedRequest, headers: [...reqHeadersCopy] };
       },
       upsert: (header: { key: string; value: string }) => {
-        const idx = reqHeadersCopy.findIndex((h) => h.key.toLowerCase() === header.key.toLowerCase());
+        const idx = reqHeadersCopy.findIndex(
+          (h) => h.key.toLowerCase() === header.key.toLowerCase()
+        );
         if (idx >= 0) {
-          reqHeadersCopy[idx].value = String(header.value ?? "");
-          reqHeadersCopy[idx].enabled = true;
+          reqHeadersCopy[idx] = {
+            ...reqHeadersCopy[idx],
+            value: String(header.value ?? ""),
+            enabled: true,
+          };
         } else {
-          reqHeadersCopy.push({ id: `h_${Date.now()}`, key: header.key, value: String(header.value ?? ""), enabled: true });
+          reqHeadersCopy.push({
+            id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            key: header.key,
+            value: String(header.value ?? ""),
+            enabled: true,
+          });
         }
-        result.mutatedRequest = { ...result.mutatedRequest, headers: reqHeadersCopy };
+        result.mutatedRequest = { ...result.mutatedRequest, headers: [...reqHeadersCopy] };
+      },
+      remove: (headerKey: string) => {
+        const lower = headerKey.toLowerCase();
+        const next = reqHeadersCopy.filter((h) => h.key.toLowerCase() !== lower);
+        reqHeadersCopy.length = 0;
+        reqHeadersCopy.push(...next);
+        result.mutatedRequest = { ...result.mutatedRequest, headers: [...reqHeadersCopy] };
       },
       get: (key: string) => {
         const hit = reqHeadersCopy.find((h) => h.key.toLowerCase() === key.toLowerCase());
         return hit ? hit.value : undefined;
+      },
+      toObject: () => {
+        const out: Record<string, string> = {};
+        for (const h of reqHeadersCopy) {
+          if (h.enabled !== false && h.key) {
+            out[h.key] = h.value;
+          }
+        }
+        return out;
       },
     },
   };
@@ -329,11 +520,21 @@ export async function runScript(
       }
     : null;
 
+  const postman = {
+    getEnvironmentVariable: (key: string) => envProxy.get(key),
+    setEnvironmentVariable: (key: string, val: unknown) => envProxy.set(key, val),
+    clearEnvironmentVariable: (key: string) => envProxy.unset(key),
+    getGlobalVariable: (key: string) => varProxy.get(key),
+    setGlobalVariable: (key: string, val: unknown) => varProxy.set(key, val),
+    clearGlobalVariable: (key: string) => varProxy.set(key, ""),
+    setNextRequest: () => {},
+  };
+
   // Postman `pm` context object
   const pm = {
-    environment: envObj,
-    variables: variablesObj,
-    collectionVariables: envObj,
+    environment: envProxy,
+    variables: varProxy,
+    collectionVariables: colProxy,
     request: reqObj,
     response: respObj,
     info: {
@@ -371,9 +572,32 @@ export async function runScript(
   };
 
   try {
-    // Execute user script in safe sandboxed function wrapper
-    const runner = new Function("pm", "pulse", "console", "expect", `"use strict";\n${code}`);
-    const maybePromise = runner(pm, pm, scopedConsole, createExpect);
+    // Execute user script in safe sandboxed function wrapper with all aliases
+    const runner = new Function(
+      "pm",
+      "pulse",
+      "console",
+      "expect",
+      "environment",
+      "variables",
+      "collectionVariables",
+      "postman",
+      "request",
+      "response",
+      `"use strict";\n${code}`
+    );
+    const maybePromise = runner(
+      pm,
+      pm,
+      scopedConsole,
+      createExpect,
+      envProxy,
+      varProxy,
+      colProxy,
+      postman,
+      reqObj,
+      respObj
+    );
     if (maybePromise && typeof maybePromise.then === "function") {
       await maybePromise;
     }
@@ -383,20 +607,18 @@ export async function runScript(
     result.consoleLogs.push({ type: "error", message: `Script error: ${msg}` });
   }
 
-  // If environment was modified, sync updated KeyValue list
-  if (result.envModified && env) {
+  // 1. If environment was modified, sync updated KeyValue list
+  if (result.envModified) {
     const updated: KeyValue[] = [];
-    // Keep existing rows with updated values
-    for (const v of env.variables) {
-      if (envMap.has(v.key)) {
-        updated.push({ ...v, value: envMap.get(v.key)! });
-        envMap.delete(v.key);
-      } else {
-        // Was unset
+    const envWorkingMap = new Map(envMap);
+    const existing = env?.variables || [];
+    for (const v of existing) {
+      if (envWorkingMap.has(v.key)) {
+        updated.push({ ...v, value: envWorkingMap.get(v.key)! });
+        envWorkingMap.delete(v.key);
       }
     }
-    // Add any newly created variables from pm.environment.set()
-    for (const [newKey, newVal] of envMap.entries()) {
+    for (const [newKey, newVal] of envWorkingMap.entries()) {
       updated.push({
         id: `var_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         key: newKey,
@@ -406,6 +628,31 @@ export async function runScript(
     }
     result.updatedEnvVariables = updated;
   }
+
+  // 2. If collection variables were modified, sync updated KeyValue list
+  if (result.collectionModified) {
+    const updatedCol: KeyValue[] = [];
+    const colWorkingMap = new Map(colMap);
+    const existingCol = collection?.variables || [];
+    for (const v of existingCol) {
+      if (colWorkingMap.has(v.key)) {
+        updatedCol.push({ ...v, value: colWorkingMap.get(v.key)! });
+        colWorkingMap.delete(v.key);
+      }
+    }
+    for (const [newKey, newVal] of colWorkingMap.entries()) {
+      updatedCol.push({
+        id: `var_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        key: newKey,
+        value: newVal,
+        enabled: true,
+      });
+    }
+    result.updatedCollectionVariables = updatedCol;
+  }
+
+  // 3. Export execution variables for downstream scripts & interpolation
+  result.executionVariables = Object.fromEntries(varMap.entries());
 
   return result;
 }

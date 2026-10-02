@@ -8,6 +8,7 @@ interface Props {
   environments: Environment[];
   activeEnvId: string | null;
   targetEnvId?: string | null;
+  targetVarKey?: string | null;
   onChange: (envs: Environment[]) => void;
   onActive: (id: string | null) => void;
   onImportEnv: (file: File) => void;
@@ -18,6 +19,7 @@ export function EnvModal({
   environments,
   activeEnvId,
   targetEnvId,
+  targetVarKey,
   onChange,
   onActive,
   onImportEnv,
@@ -31,13 +33,21 @@ export function EnvModal({
         const el = document.getElementById(`env-card-${targetEnvId}`);
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (targetVarKey) {
+            const varInput = el.querySelector<HTMLInputElement>(`input[data-varkey="${targetVarKey}"]`);
+            if (varInput) {
+              varInput.focus();
+              varInput.select();
+              return;
+            }
+          }
           const input = el.querySelector("input");
           input?.focus();
         }
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [targetEnvId]);
+  }, [targetEnvId, targetVarKey]);
 
   const add = () => {
     const env: Environment = { id: uid("env"), name: "New Environment", variables: [] };
@@ -70,6 +80,21 @@ export function EnvModal({
     const next = environments.filter((e) => e.id !== id);
     onChange(next);
     if (activeEnvId === id) onActive(next[0]?.id ?? null);
+  };
+
+  const duplicate = (id: string) => {
+    const env = environments.find((e) => e.id === id);
+    if (!env) return;
+    const dup: Environment = {
+      id: uid("env"),
+      name: `${env.name} Copy`,
+      variables: env.variables.map((v) => ({ ...v, id: uid("kv") })),
+    };
+    const idx = environments.findIndex((e) => e.id === id);
+    const next = [...environments];
+    next.splice(idx + 1, 0, dup);
+    onChange(next);
+    onActive(dup.id);
   };
 
   return (
@@ -108,6 +133,13 @@ export function EnvModal({
               </button>
               <button
                 className="btn sm"
+                onClick={() => duplicate(env.id)}
+                title="Duplicate this environment"
+              >
+                Duplicate
+              </button>
+              <button
+                className="btn sm"
                 onClick={() =>
                   downloadJson(
                     `${env.name.replace(/\s+/g, "-").toLowerCase()}.postman_environment.json`,
@@ -121,11 +153,101 @@ export function EnvModal({
                 Delete
               </button>
             </h3>
+
+            {/* Dedicated Base URL Quick Editor Box */}
+            <div className={`env-baseurl-quick-box ${targetVarKey === "baseUrl" ? "highlight-active" : ""}`}>
+              <div className="env-baseurl-label-row">
+                <span className="env-baseurl-tag">
+                  <span className="dot" />
+                  <strong>Base URL</strong> (<code>{"{{baseUrl}}"}</code>)
+                </span>
+                <span className="env-baseurl-hint">Target host for local mock server or external APIs</span>
+              </div>
+              <div className="env-baseurl-input-row">
+                <input
+                  type="text"
+                  data-varkey="baseUrl"
+                  className="env-baseurl-input"
+                  placeholder="e.g. http://127.0.0.1:3001 or http://localhost:8080"
+                  value={env.variables.find((v) => v.key === "baseUrl")?.value ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const exists = env.variables.some((v) => v.key === "baseUrl");
+                    const updated = exists
+                      ? env.variables.map((v) => (v.key === "baseUrl" ? { ...v, value: val, enabled: true } : v))
+                      : [kv("baseUrl", val), ...env.variables];
+                    update(env.id, { variables: updated });
+                  }}
+                />
+              </div>
+              <div className="env-baseurl-presets">
+                <span className="preset-text">Quick Presets:</span>
+                <button
+                  type="button"
+                  className="preset-btn"
+                  onClick={() => {
+                    const exists = env.variables.some((v) => v.key === "baseUrl");
+                    const updated = exists
+                      ? env.variables.map((v) => (v.key === "baseUrl" ? { ...v, value: "http://127.0.0.1:3001", enabled: true } : v))
+                      : [kv("baseUrl", "http://127.0.0.1:3001"), ...env.variables];
+                    update(env.id, { variables: updated });
+                  }}
+                  title="Pulse Built-in Proxy & Mock Server"
+                >
+                  ⚡ Local Mock (3001)
+                </button>
+                <button
+                  type="button"
+                  className="preset-btn"
+                  onClick={() => {
+                    const exists = env.variables.some((v) => v.key === "baseUrl");
+                    const updated = exists
+                      ? env.variables.map((v) => (v.key === "baseUrl" ? { ...v, value: "http://localhost:8080", enabled: true } : v))
+                      : [kv("baseUrl", "http://localhost:8080"), ...env.variables];
+                    update(env.id, { variables: updated });
+                  }}
+                  title="Standard Local Backend Port 8080"
+                >
+                  💻 localhost:8080
+                </button>
+                <button
+                  type="button"
+                  className="preset-btn"
+                  onClick={() => {
+                    const exists = env.variables.some((v) => v.key === "baseUrl");
+                    const updated = exists
+                      ? env.variables.map((v) => (v.key === "baseUrl" ? { ...v, value: "http://localhost:3000", enabled: true } : v))
+                      : [kv("baseUrl", "http://localhost:3000"), ...env.variables];
+                    update(env.id, { variables: updated });
+                  }}
+                  title="Node / React / Next.js Port 3000"
+                >
+                  🚀 localhost:3000
+                </button>
+                <button
+                  type="button"
+                  className="preset-btn"
+                  onClick={() => {
+                    const exists = env.variables.some((v) => v.key === "baseUrl");
+                    const updated = exists
+                      ? env.variables.map((v) => (v.key === "baseUrl" ? { ...v, value: "https://httpbin.org", enabled: true } : v))
+                      : [kv("baseUrl", "https://httpbin.org"), ...env.variables];
+                    update(env.id, { variables: updated });
+                  }}
+                  title="Public HTTPBin Echo API"
+                >
+                  🌐 httpbin.org
+                </button>
+              </div>
+            </div>
+
             <KeyValueEditor
               rows={env.variables}
               onChange={(variables) => update(env.id, { variables })}
               keyPlaceholder="baseUrl"
               valuePlaceholder="https://api.example.com"
+              title="All Environment Variables"
+              allowBulkEdit={true}
             />
             {env.variables.length === 0 && (
               <button

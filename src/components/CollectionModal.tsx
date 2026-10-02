@@ -11,6 +11,7 @@ interface Props {
   initialTab?: CollectionTab;
   onClose: () => void;
   onSave: (updated: Collection) => void;
+  onDuplicate?: (id: string) => void;
 }
 
 export const CollectionModal: FC<Props> = ({
@@ -19,6 +20,7 @@ export const CollectionModal: FC<Props> = ({
   initialTab = "scripts-pre",
   onClose,
   onSave,
+  onDuplicate,
 }) => {
   const [activeTab, setActiveTab] = useState<CollectionTab>(initialTab);
   const [name, setName] = useState(collection.name);
@@ -772,6 +774,18 @@ export const CollectionModal: FC<Props> = ({
             background: "var(--bg-2)",
           }}
         >
+          {onDuplicate && (
+            <button
+              className="btn"
+              onClick={() => {
+                onDuplicate(collection.id);
+                onClose();
+              }}
+              title="Duplicate this entire collection"
+            >
+              ⧉ Duplicate
+            </button>
+          )}
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
