@@ -62,6 +62,15 @@ export function RequestPane(props: Props) {
   // Scripts sub-tab: "pre" (Before request) vs "post" (After response / Tests)
   const [scriptSubTab, setScriptSubTab] = useState<"pre" | "post">("pre");
 
+  // Basic Auth Password & Token Visibility & Modal State
+  const [showBasicPass, setShowBasicPass] = useState(false);
+  const [basicPassModalOpen, setBasicPassModalOpen] = useState(false);
+  const [basicPassCopied, setBasicPassCopied] = useState(false);
+  const [showBearerToken, setShowBearerToken] = useState(false);
+  const [bearerCopied, setBearerCopied] = useState(false);
+  const [showApiKeyValue, setShowApiKeyValue] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+
   useEffect(() => {
     return () => {
       if (wsRef.current) {
@@ -846,12 +855,72 @@ export function RequestPane(props: Props) {
                 </div>
                 {draft.auth.type === "bearer" && (
                   <div className="field">
-                    <label>Bearer Token</label>
-                    <input
-                      value={draft.auth.bearerToken}
-                      placeholder="{{token}} or raw-token-xyz"
-                      onChange={(e) => setAuth({ bearerToken: e.target.value })}
-                    />
+                    <div className="field-label-with-actions">
+                      <label>Bearer Token</label>
+                      <div className="field-action-group">
+                        <button
+                          type="button"
+                          className="field-action-tag-btn"
+                          onClick={() => setShowBearerToken((prev) => !prev)}
+                          title={showBearerToken ? "Hide token characters" : "Show token characters"}
+                        >
+                          {showBearerToken ? "🙈 Hide" : "👁️ Show"}
+                        </button>
+                        {draft.auth.bearerToken && (
+                          <button
+                            type="button"
+                            className="field-action-tag-btn"
+                            onClick={() => {
+                              navigator.clipboard.writeText(draft.auth.bearerToken);
+                              setBearerCopied(true);
+                              setTimeout(() => setBearerCopied(false), 1500);
+                            }}
+                            title="Copy token to clipboard"
+                          >
+                            {bearerCopied ? "✓ Copied" : "📋 Copy"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="password-input-wrapper">
+                      <input
+                        type={showBearerToken ? "text" : "password"}
+                        value={draft.auth.bearerToken}
+                        placeholder="{{token}} or raw-token-xyz"
+                        onChange={(e) => setAuth({ bearerToken: e.target.value })}
+                        className="password-input-with-actions"
+                      />
+                      <div className="password-input-embedded-actions">
+                        <button
+                          type="button"
+                          className="password-input-action-btn"
+                          onClick={() => setShowBearerToken((prev) => !prev)}
+                          title={showBearerToken ? "Hide token" : "Show token"}
+                        >
+                          {showBearerToken ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                              <line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                          )}
+                        </button>
+                        {draft.auth.bearerToken && (
+                          <button
+                            type="button"
+                            className="password-input-action-btn danger-hover"
+                            onClick={() => setAuth({ bearerToken: "" })}
+                            title="Clear token"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
                 {draft.auth.type === "basic" && (
@@ -865,13 +934,91 @@ export function RequestPane(props: Props) {
                       />
                     </div>
                     <div className="field">
-                      <label>Password</label>
-                      <input
-                        type="password"
-                        value={draft.auth.basicPass}
-                        placeholder="{{password}} or password"
-                        onChange={(e) => setAuth({ basicPass: e.target.value })}
-                      />
+                      <div className="field-label-with-actions">
+                        <label>Password</label>
+                        <div className="field-action-group">
+                          <button
+                            type="button"
+                            className="field-action-tag-btn"
+                            onClick={() => setShowBasicPass((prev) => !prev)}
+                            title={showBasicPass ? "Hide password (mask characters)" : "Show password (reveal characters)"}
+                          >
+                            {showBasicPass ? "🙈 Hide" : "👁️ Show"}
+                          </button>
+                          <button
+                            type="button"
+                            className="field-action-tag-btn"
+                            onClick={() => setBasicPassModalOpen(true)}
+                            title="Open Password editor & variable inspector modal"
+                          >
+                            ✏️ Edit
+                          </button>
+                          {draft.auth.basicPass && (
+                            <button
+                              type="button"
+                              className="field-action-tag-btn"
+                              onClick={() => {
+                                navigator.clipboard.writeText(draft.auth.basicPass);
+                                setBasicPassCopied(true);
+                                setTimeout(() => setBasicPassCopied(false), 1500);
+                              }}
+                              title="Copy password to clipboard"
+                            >
+                              {basicPassCopied ? "✓ Copied" : "📋 Copy"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="password-input-wrapper">
+                        <input
+                          type={showBasicPass ? "text" : "password"}
+                          value={draft.auth.basicPass}
+                          placeholder="{{password}} or password"
+                          onChange={(e) => setAuth({ basicPass: e.target.value })}
+                          className="password-input-with-actions"
+                        />
+                        <div className="password-input-embedded-actions">
+                          <button
+                            type="button"
+                            className="password-input-action-btn"
+                            onClick={() => setShowBasicPass((prev) => !prev)}
+                            title={showBasicPass ? "Hide password" : "Show password"}
+                          >
+                            {showBasicPass ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                <line x1="1" y1="1" x2="23" y2="23"/>
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="password-input-action-btn"
+                            onClick={() => setBasicPassModalOpen(true)}
+                            title="Edit password in modal dialog"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                          {draft.auth.basicPass && (
+                            <button
+                              type="button"
+                              className="password-input-action-btn danger-hover"
+                              onClick={() => setAuth({ basicPass: "" })}
+                              title="Clear password"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}
@@ -886,12 +1033,72 @@ export function RequestPane(props: Props) {
                       />
                     </div>
                     <div className="field">
-                      <label>Key Value</label>
-                      <input
-                        value={draft.auth.apiKeyValue}
-                        placeholder="{{value}} or key-value"
-                        onChange={(e) => setAuth({ apiKeyValue: e.target.value })}
-                      />
+                      <div className="field-label-with-actions">
+                        <label>Key Value</label>
+                        <div className="field-action-group">
+                          <button
+                            type="button"
+                            className="field-action-tag-btn"
+                            onClick={() => setShowApiKeyValue((prev) => !prev)}
+                            title={showApiKeyValue ? "Hide key value" : "Show key value"}
+                          >
+                            {showApiKeyValue ? "🙈 Hide" : "👁️ Show"}
+                          </button>
+                          {draft.auth.apiKeyValue && (
+                            <button
+                              type="button"
+                              className="field-action-tag-btn"
+                              onClick={() => {
+                                navigator.clipboard.writeText(draft.auth.apiKeyValue);
+                                setApiKeyCopied(true);
+                                setTimeout(() => setApiKeyCopied(false), 1500);
+                              }}
+                              title="Copy key value to clipboard"
+                            >
+                              {apiKeyCopied ? "✓ Copied" : "📋 Copy"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="password-input-wrapper">
+                        <input
+                          type={showApiKeyValue ? "text" : "password"}
+                          value={draft.auth.apiKeyValue}
+                          placeholder="{{value}} or key-value"
+                          onChange={(e) => setAuth({ apiKeyValue: e.target.value })}
+                          className="password-input-with-actions"
+                        />
+                        <div className="password-input-embedded-actions">
+                          <button
+                            type="button"
+                            className="password-input-action-btn"
+                            onClick={() => setShowApiKeyValue((prev) => !prev)}
+                            title={showApiKeyValue ? "Hide key value" : "Show key value"}
+                          >
+                            {showApiKeyValue ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                <line x1="1" y1="1" x2="23" y2="23"/>
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </svg>
+                            )}
+                          </button>
+                          {draft.auth.apiKeyValue && (
+                            <button
+                              type="button"
+                              className="password-input-action-btn danger-hover"
+                              onClick={() => setAuth({ apiKeyValue: "" })}
+                              title="Clear key value"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="field" style={{ maxWidth: 180 }}>
                       <label>Add to</label>
@@ -907,6 +1114,7 @@ export function RequestPane(props: Props) {
                     </div>
                   </>
                 )}
+
                 {/* Live Auth Variable Resolution Feedback */}
                 {renderVariableChips(authVars)}
               </div>
@@ -1250,6 +1458,151 @@ export function RequestPane(props: Props) {
           </div>
         </>
       )}
+
+      {/* Basic Auth Password Editor Modal Dialog */}
+      {basicPassModalOpen && (
+        <div className="modal-backdrop" onClick={() => setBasicPassModalOpen(false)}>
+          <div
+            className="modal"
+            style={{ maxWidth: 560, width: "95%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🔒</span>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Edit Basic Auth Password</h2>
+              </div>
+              <button
+                className="icon-btn"
+                onClick={() => setBasicPassModalOpen(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: "16px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+                Configure the password for HTTP Basic Authentication. Enter a plain text password or reference variables using <code style={{ color: "var(--accent)", background: "var(--bg-3)", padding: "1px 5px", borderRadius: 3 }}>{"{{password}}"}</code>.
+              </p>
+
+              <div className="field">
+                <div className="field-label-with-actions" style={{ marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Password Value</label>
+                  <button
+                    type="button"
+                    className="field-action-tag-btn"
+                    onClick={() => setShowBasicPass((prev) => !prev)}
+                  >
+                    {showBasicPass ? "🙈 Hide Characters" : "👁️ Show Characters"}
+                  </button>
+                </div>
+
+                <div className="password-input-wrapper">
+                  <input
+                    autoFocus
+                    type={showBasicPass ? "text" : "password"}
+                    value={draft.auth.basicPass}
+                    placeholder="{{password}} or secret"
+                    onChange={(e) => setAuth({ basicPass: e.target.value })}
+                    className="password-input-with-actions"
+                    style={{ fontSize: 13, padding: "8px 10px" }}
+                  />
+                  <div className="password-input-embedded-actions">
+                    <button
+                      type="button"
+                      className="password-input-action-btn"
+                      onClick={() => setShowBasicPass((prev) => !prev)}
+                      title={showBasicPass ? "Hide password" : "Show password"}
+                    >
+                      {showBasicPass ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Variable Resolution Inspector if variable is present */}
+              {draft.auth.basicPass.includes("{{") && (
+                <div style={{ background: "var(--bg-3)", border: "1px solid var(--border-soft)", borderRadius: 6, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-mute)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Resolved Value ({env ? env.name : "No Active Environment"}):
+                    </span>
+                    <span style={{ fontSize: 10, color: "var(--accent)" }}>Runtime Preview</span>
+                  </div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", wordBreak: "break-all", background: "var(--bg)", padding: "6px 8px", borderRadius: 4, border: "1px solid var(--border)" }}>
+                    {showBasicPass
+                      ? interpolate(draft.auth.basicPass, env ?? null, collection ?? null) || <span style={{ color: "var(--text-mute)", fontStyle: "italic" }}>Empty / unresolved</span>
+                      : "••••••••••••••••"}
+                  </div>
+                </div>
+              )}
+
+              {/* Quick insert variable suggestions from current environment */}
+              {env && env.variables.length > 0 && (
+                <div>
+                  <span style={{ fontSize: 11, color: "var(--text-mute)", display: "block", marginBottom: 6 }}>
+                    Insert variable from active environment ({env.name}):
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {env.variables
+                      .filter((v) => v.enabled !== false && v.key)
+                      .slice(0, 8)
+                      .map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          className="btn sm"
+                          style={{ fontSize: 11, padding: "2px 7px" }}
+                          onClick={() => setAuth({ basicPass: `{{${v.key}}}` })}
+                          title={`Value: ${v.value}`}
+                        >
+                          + {`{{${v.key}}}`}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                {draft.auth.basicPass && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(draft.auth.basicPass);
+                        setBasicPassCopied(true);
+                        setTimeout(() => setBasicPassCopied(false), 1500);
+                      }}
+                    >
+                      {basicPassCopied ? "✓ Copied" : "📋 Copy"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm danger"
+                      onClick={() => setAuth({ basicPass: "" })}
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn primary sm"
+                onClick={() => setBasicPassModalOpen(false)}
+                style={{ minWidth: 70 }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -263,6 +263,32 @@ export default function App() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const importDropdownRef = useRef<HTMLDivElement>(null);
+  const [tabContextMenu, setTabContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [tabActionsOpen, setTabActionsOpen] = useState(false);
+  const tabActionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tabContextMenu && !tabActionsOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (tabActionsDropdownRef.current && tabActionsDropdownRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setTabContextMenu(null);
+      setTabActionsOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setTabContextMenu(null);
+        setTabActionsOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [tabContextMenu, tabActionsOpen]);
 
   const startResizingSidebar = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -518,6 +544,56 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const closeOtherTabs = (keepId: string) => {
+    setTabs((prev) => {
+      const target = prev.find((t) => t.id === keepId);
+      if (!target) return prev;
+      setActiveTabId(target.id);
+      return [target];
+    });
+    flashImport("Closed other tabs");
+  };
+
+  const closeAllTabs = () => {
+    const t = blankTab();
+    setTabs([t]);
+    setActiveTabId(t.id);
+    flashImport("Closed all tabs");
+  };
+
+  const closeTabsToRight = (targetId: string) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === targetId);
+      if (idx === -1) return prev;
+      const next = prev.slice(0, idx + 1);
+      if (!next.some((t) => t.id === activeTabId)) {
+        setActiveTabId(targetId);
+      }
+      return next;
+    });
+    flashImport("Closed tabs to the right");
+  };
+
+  const duplicateTab = (tabId: string) => {
+    setTabs((prev) => {
+      const target = prev.find((t) => t.id === tabId);
+      if (!target) return prev;
+      const duplicated: TabState = {
+        ...target,
+        id: uid("tab"),
+        name: `${target.name} Copy`,
+        draft: { ...target.draft, name: `${target.draft.name} Copy` },
+        dirty: true,
+      };
+      const idx = prev.findIndex((t) => t.id === tabId);
+      const next = [...prev];
+      next.splice(idx + 1, 0, duplicated);
+      setActiveTabId(duplicated.id);
+      return next;
+    });
+    flashImport("Duplicated tab");
   };
 
   const onDraftChange = (patch: Partial<RequestSnapshot>) => {
@@ -923,14 +999,19 @@ export default function App() {
     flashImport(`Saved collection "${updated.name}"`);
   };
 
-  const renameCollection = (id: string) => {
-    const col = data.collections.find((c) => c.id === id);
-    const name = window.prompt("Rename collection", col?.name ?? "");
-    if (!name) return;
+  const renameCollection = (id: string, newName?: string) => {
+    let name = newName;
+    if (name === undefined) {
+      const col = data.collections.find((c) => c.id === id);
+      name = window.prompt?.("Rename collection", col?.name ?? "") || "";
+    }
+    if (!name || !name.trim()) return;
+    const finalName = name.trim();
     patchData((prev) => ({
       ...prev,
-      collections: prev.collections.map((c) => (c.id === id ? { ...c, name } : c)),
+      collections: prev.collections.map((c) => (c.id === id ? { ...c, name: finalName } : c)),
     }));
+    flashImport(`Renamed collection to "${finalName}"`);
   };
 
   const deleteCollection = (id: string) => {
@@ -957,14 +1038,18 @@ export default function App() {
   };
 
   const duplicateCol = (id: string) => {
-    const col = data.collections.find((c) => c.id === id);
-    if (!col) return;
-    const dup = duplicateCollection(col);
-    const idx = data.collections.findIndex((c) => c.id === id);
-    const next = [...data.collections];
-    next.splice(idx + 1, 0, dup);
-    patchData({ collections: next });
-    flashImport(`Duplicated collection "${col.name}"`);
+    let duplicatedName = "";
+    patchData((prev) => {
+      const col = prev.collections.find((c) => c.id === id);
+      if (!col) return prev;
+      const dup = duplicateCollection(col);
+      duplicatedName = dup.name;
+      const idx = prev.collections.findIndex((c) => c.id === id);
+      const next = [...prev.collections];
+      next.splice(idx + 1, 0, dup);
+      return { ...prev, collections: next };
+    });
+    flashImport(`Duplicated collection${duplicatedName ? ` "${duplicatedName}"` : ""}`);
   };
 
   const duplicateTreeNode = (nodeId: string, collectionId: string) => {
@@ -1176,16 +1261,15 @@ export default function App() {
         <button className="btn sm ghost" onClick={() => void copyCurl()}>
           {copied ? "Copied" : "Copy"}
         </button>
-        {isDrawer && (
-          <button
-            className="btn sm ghost"
-            onClick={() => setSnippetOpen(false)}
-            title="Close snippet drawer"
-            style={{ padding: "2px 6px" }}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          className="btn sm ghost"
+          onClick={() => setSnippetOpen(false)}
+          title="Close code snippet panel"
+          style={{ padding: "2px 6px" }}
+          aria-label="Close code snippet panel"
+        >
+          ✕
+        </button>
       </div>
       <pre className="snippet-body">{snippet}</pre>
     </div>
@@ -1660,12 +1744,16 @@ export default function App() {
             const col = data.collections.find((c) => c.id === id);
             if (col) setRunnerCol(col);
           }}
-          onRenameNode={(id) => {
-            const name = window.prompt("Rename");
-            if (!name) return;
-            patchData((prev) => ({ ...prev, collections: renameNode(prev.collections, id, name) }));
+          onRenameNode={(id, newName) => {
+            let name = newName;
+            if (name === undefined) {
+              name = window.prompt?.("Rename") || "";
+            }
+            if (!name || !name.trim()) return;
+            const finalName = name.trim();
+            patchData((prev) => ({ ...prev, collections: renameNode(prev.collections, id, finalName) }));
             setTabs((prev) =>
-              prev.map((t) => (t.requestId === id ? { ...t, name, draft: { ...t.draft, name } } : t))
+              prev.map((t) => (t.requestId === id ? { ...t, name: finalName, draft: { ...t.draft, name: finalName } } : t))
             );
           }}
           onDeleteNode={(id) => {
@@ -1721,6 +1809,17 @@ export default function App() {
                     key={t.id}
                     className={`tab ${t.id === activeTabId ? "active" : ""}`}
                     onClick={() => setActiveTabId(t.id)}
+                    onMouseDown={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeTab(t.id);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setTabContextMenu({ id: t.id, x: e.clientX, y: e.clientY });
+                    }}
                   >
                     <span className={`method ${METHOD_COLORS[t.draft.method]}`}>
                       {t.draft.method === "DELETE" ? "DEL" : t.draft.method}
@@ -1731,17 +1830,23 @@ export default function App() {
                     </span>
                     <span
                       className="tab-close"
+                      title="Close tab (Middle click tab, or Alt+Click to close others)"
                       onClick={(e) => {
                         e.stopPropagation();
-                        closeTab(t.id);
+                        if (e.altKey) {
+                          closeOtherTabs(t.id);
+                        } else {
+                          closeTab(t.id);
+                        }
                       }}
                     >
-                      x
+                      ✕
                     </span>
                   </button>
                 ))}
                 <button
                   className="tab-add"
+                  title="New Tab"
                   onClick={() => {
                     const t = blankTab();
                     setTabs((prev) => [...prev, t]);
@@ -1750,6 +1855,66 @@ export default function App() {
                 >
                   +
                 </button>
+                {tabs.length > 1 && (
+                  <button
+                    className="tab-close-others-btn"
+                    title={`Close all other tabs except active tab (${tabs.length - 1} ${tabs.length - 1 === 1 ? "tab" : "tabs"})`}
+                    onClick={() => closeOtherTabs(activeTabId)}
+                  >
+                    <span className="tab-close-others-icon">✕</span>
+                    <span>Close Others</span>
+                    <span className="tab-close-others-count">({tabs.length - 1})</span>
+                  </button>
+                )}
+                {tabs.length > 1 && (
+                  <div className="tabs-more-actions" ref={tabActionsDropdownRef}>
+                    <button
+                      className="tab-actions-btn"
+                      title="Tab Options (Close other tabs, Close all...)"
+                      onClick={() => setTabActionsOpen((prev) => !prev)}
+                    >
+                      •••
+                    </button>
+                    {tabActionsOpen && (
+                      <div className="context-menu tab-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => {
+                            closeOtherTabs(activeTabId);
+                            setTabActionsOpen(false);
+                          }}
+                        >
+                          Close Other Tabs
+                        </button>
+                        <button
+                          disabled={tabs.findIndex((t) => t.id === activeTabId) === tabs.length - 1}
+                          onClick={() => {
+                            closeTabsToRight(activeTabId);
+                            setTabActionsOpen(false);
+                          }}
+                        >
+                          Close Tabs to the Right
+                        </button>
+                        <button
+                          onClick={() => {
+                            closeAllTabs();
+                            setTabActionsOpen(false);
+                          }}
+                        >
+                          Close All Tabs
+                        </button>
+                        <div className="context-menu-divider" />
+                        <button
+                          onClick={() => {
+                            duplicateTab(activeTabId);
+                            setTabActionsOpen(false);
+                          }}
+                        >
+                          Duplicate Tab
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               {activeTab && (
                 <div className="req-crumbbar">
@@ -1839,6 +2004,57 @@ export default function App() {
           </>
         )}
       </div>
+      {tabContextMenu && (
+        <div
+          className="context-menu"
+          style={{ top: tabContextMenu.y, left: tabContextMenu.x, zIndex: 3000 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              closeTab(tabContextMenu.id);
+              setTabContextMenu(null);
+            }}
+          >
+            Close Tab
+          </button>
+          <button
+            disabled={tabs.length <= 1}
+            onClick={() => {
+              closeOtherTabs(tabContextMenu.id);
+              setTabContextMenu(null);
+            }}
+          >
+            Close Other Tabs
+          </button>
+          <button
+            disabled={tabs.findIndex((t) => t.id === tabContextMenu.id) === tabs.length - 1}
+            onClick={() => {
+              closeTabsToRight(tabContextMenu.id);
+              setTabContextMenu(null);
+            }}
+          >
+            Close Tabs to the Right
+          </button>
+          <button
+            onClick={() => {
+              closeAllTabs();
+              setTabContextMenu(null);
+            }}
+          >
+            Close All Tabs
+          </button>
+          <div className="context-menu-divider" />
+          <button
+            onClick={() => {
+              duplicateTab(tabContextMenu.id);
+              setTabContextMenu(null);
+            }}
+          >
+            Duplicate Tab
+          </button>
+        </div>
+      )}
       <ConsoleDrawer
         isOpen={consoleOpen}
         onClose={() => setConsoleOpen(false)}

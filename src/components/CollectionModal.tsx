@@ -1,4 +1,4 @@
-import { useState, type FC } from "react";
+import { useState, useEffect, type FC } from "react";
 import type { Collection, KeyValue } from "../types";
 import { KeyValueEditor } from "./KeyValueEditor";
 import { collectRequests } from "../request";
@@ -28,6 +28,14 @@ export const CollectionModal: FC<Props> = ({
   const [preScript, setPreScript] = useState(collection.preScript || "");
   const [postScript, setPostScript] = useState(collection.postScript || "");
   const [variables, setVariables] = useState<KeyValue[]>(collection.variables || []);
+
+  useEffect(() => {
+    setName(collection.name);
+    setDescription(collection.description || "");
+    setPreScript(collection.preScript || "");
+    setPostScript(collection.postScript || "");
+    setVariables(collection.variables || []);
+  }, [collection]);
 
   if (!isOpen) return null;
 
@@ -116,7 +124,24 @@ export const CollectionModal: FC<Props> = ({
             </span>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{name || "Collection Settings"}</h2>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Collection Name"
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontWeight: 700,
+                    background: "var(--bg-3)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    color: "var(--text)",
+                    minWidth: 180,
+                  }}
+                  title="Click to edit collection name"
+                />
                 <span
                   style={{
                     fontSize: 11,

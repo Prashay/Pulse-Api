@@ -15,12 +15,12 @@ interface Props {
   onNewRequestType?: (type: "http" | "websocket" | "graphql" | "mock") => void;
   onNewFolder: (collectionId: string, folderId: string | null) => void;
   onEditCollection?: (id: string, initialTab?: "scripts-pre" | "scripts-post" | "variables" | "overview") => void;
-  onRenameCollection: (id: string) => void;
+  onRenameCollection: (id: string, newName?: string) => void;
   onDeleteCollection: (id: string) => void;
   onExportCollection: (id: string) => void;
   onDuplicateCollection?: (id: string) => void;
   onRunCollection: (id: string) => void;
-  onRenameNode: (id: string) => void;
+  onRenameNode: (id: string, newName?: string) => void;
   onDeleteNode: (id: string) => void;
   onDuplicateNode?: (id: string, collectionId: string) => void;
   onImportClick: () => void;
@@ -72,6 +72,34 @@ export function Sidebar(props: Props) {
     return "default";
   });
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  const saveRename = (id: string, isCollection: boolean) => {
+    const trimmed = editingName.trim();
+    if (trimmed) {
+      if (isCollection) {
+        props.onRenameCollection(id, trimmed);
+      } else {
+        props.onRenameNode(id, trimmed);
+      }
+    }
+    setEditingId(null);
+  };
+
+  useEffect(() => {
+    if (!menu) return;
+    const onDocClick = () => setMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("mousedown", onDocClick);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onDocClick);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menu]);
 
   const toggleAllFolders = () => {
     const allFolderIds: string[] = [];
@@ -543,7 +571,38 @@ export function Sidebar(props: Props) {
                     <Chevron open={!collapsed[col.id]} />
                   </button>
                   <span className="col-folder-icon">📁</span>
-                  <span className="grow">{col.name}</span>
+                  {editingId === col.id ? (
+                    <input
+                      type="text"
+                      className="inline-rename-input"
+                      autoFocus
+                      value={editingName}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          saveRename(col.id, true);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setEditingId(null);
+                        }
+                      }}
+                      onBlur={() => saveRename(col.id, true)}
+                    />
+                  ) : (
+                    <span
+                      className="grow"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setEditingId(col.id);
+                        setEditingName(col.name);
+                      }}
+                      title="Double-click to rename collection"
+                    >
+                      {col.name}
+                    </span>
+                  )}
                   {(col.preScript || col.postScript) && (
                     <span
                       title={`Active collection scripts: ${[col.preScript ? "Pre-request" : null, col.postScript ? "Tests" : null].filter(Boolean).join(", ")} (Click to edit)`}
@@ -589,6 +648,16 @@ export function Sidebar(props: Props) {
                     </button>
                     <button
                       className="tree-action-btn"
+                      title="Rename collection"
+                      onClick={() => {
+                        setEditingId(col.id);
+                        setEditingName(col.name);
+                      }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      className="tree-action-btn"
                       title="More options"
                       onClick={(e) => {
                         setMenu({ id: col.id, x: e.clientX, y: e.clientY });
@@ -606,6 +675,11 @@ export function Sidebar(props: Props) {
                     collapsed={collapsed}
                     setCollapsed={setCollapsed}
                     isSearching={Boolean(query.trim())}
+                    editingId={editingId}
+                    editingName={editingName}
+                    setEditingId={setEditingId}
+                    setEditingName={setEditingName}
+                    saveRename={saveRename}
                     onOpenRequest={props.onOpenRequest}
                     onNewRequest={props.onNewRequest}
                     onNewFolder={props.onNewFolder}
@@ -786,7 +860,11 @@ export function Sidebar(props: Props) {
           )}
           <button
             onClick={() => {
-              props.onRenameCollection(menu.id);
+              const targetCol = props.collections.find((c) => c.id === menu.id);
+              if (targetCol) {
+                setEditingId(targetCol.id);
+                setEditingName(targetCol.name);
+              }
               setMenu(null);
             }}
           >
@@ -839,10 +917,15 @@ function NodeList(props: {
   collapsed: Record<string, boolean>;
   setCollapsed: Dispatch<SetStateAction<Record<string, boolean>>>;
   isSearching?: boolean;
+  editingId: string | null;
+  editingName: string;
+  setEditingId: (id: string | null) => void;
+  setEditingName: (name: string) => void;
+  saveRename: (id: string, isCollection: boolean) => void;
   onOpenRequest: (collectionId: string, requestId: string) => void;
   onNewRequest: (collectionId: string, folderId: string | null) => void;
   onNewFolder: (collectionId: string, folderId: string | null) => void;
-  onRenameNode: (id: string) => void;
+  onRenameNode: (id: string, newName?: string) => void;
   onDeleteNode: (id: string) => void;
   onDuplicateNode?: (id: string, collectionId: string) => void;
 }) {
@@ -871,7 +954,38 @@ function NodeList(props: {
                   <Chevron open={!isFolderCollapsed} />
                 </button>
                 <span className="folder-ico">{isFolderCollapsed ? "📁" : "📂"}</span>
-                <span className="name">{node.name}</span>
+                {props.editingId === node.id ? (
+                  <input
+                    type="text"
+                    className="inline-rename-input"
+                    autoFocus
+                    value={props.editingName}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => props.setEditingName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        props.saveRename(node.id, false);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        props.setEditingId(null);
+                      }
+                    }}
+                    onBlur={() => props.saveRename(node.id, false)}
+                  />
+                ) : (
+                  <span
+                    className="name"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      props.setEditingId(node.id);
+                      props.setEditingName(node.name);
+                    }}
+                    title="Double-click to rename folder"
+                  >
+                    {node.name}
+                  </span>
+                )}
                 <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="tree-action-btn"
@@ -899,7 +1013,10 @@ function NodeList(props: {
                   <button
                     className="tree-action-btn"
                     title="Rename folder"
-                    onClick={() => props.onRenameNode(node.id)}
+                    onClick={() => {
+                      props.setEditingId(node.id);
+                      props.setEditingName(node.name);
+                    }}
                   >
                     ✏️
                   </button>
@@ -926,10 +1043,35 @@ function NodeList(props: {
             key={node.id}
             className={`tree-item ${props.activeRequestId === node.id ? "active" : ""}`}
             onClick={() => props.onOpenRequest(props.collectionId, node.id)}
-            onDoubleClick={() => props.onRenameNode(node.id)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              props.setEditingId(node.id);
+              props.setEditingName(node.name);
+            }}
           >
             <span className={`method ${METHOD_COLORS[node.method]}`}>{shortMethod(node.method)}</span>
-            <span className="name">{node.name}</span>
+            {props.editingId === node.id ? (
+              <input
+                type="text"
+                className="inline-rename-input"
+                autoFocus
+                value={props.editingName}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => props.setEditingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    props.saveRename(node.id, false);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    props.setEditingId(null);
+                  }
+                }}
+                onBlur={() => props.saveRename(node.id, false)}
+              />
+            ) : (
+              <span className="name" title="Double-click to rename request">{node.name}</span>
+            )}
             <div className="tree-actions-group" onClick={(e) => e.stopPropagation()}>
               {props.onDuplicateNode && (
                 <button
@@ -943,7 +1085,10 @@ function NodeList(props: {
               <button
                 className="tree-action-btn"
                 title="Rename request"
-                onClick={() => props.onRenameNode(node.id)}
+                onClick={() => {
+                  props.setEditingId(node.id);
+                  props.setEditingName(node.name);
+                }}
               >
                 ✏️
               </button>

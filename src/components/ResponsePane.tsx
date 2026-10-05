@@ -80,7 +80,7 @@ export function ResponsePane({ response, sending }: Props) {
           </div>
         )}
       </div>
-      <div className="pane-body">
+      <div className="pane-body response-pane-body">
         {sending && (
           <div className="empty busy" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10 }}>
             <div className="pulse-spinner" />
