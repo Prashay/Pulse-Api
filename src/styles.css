@@ -8499,17 +8499,72 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   color: #dc2626;
 }
 
+/* ==========================================================================
+   Import Modal Enhancements (Collection Renaming & Destination Options)
+   ========================================================================== */
+.import-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
 
+.import-item-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.15s ease;
+}
 
+.import-item-card:focus-within {
+  border-color: var(--accent);
+}
 
+.import-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
+.import-item-badge {
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+}
 
+.import-item-badge.badge-env {
+  color: var(--ok);
+}
 
+.import-item-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
 
+.import-item-name-input {
+  width: 100%;
+  height: 28px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
 
-
-
-
-
-
+.import-item-name-input:focus {
+  border-color: var(--accent);
+}
 

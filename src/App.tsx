@@ -4,6 +4,7 @@ import type {
   Collection,
   ConsoleLog,
   Environment,
+  FolderItem,
   KeyValue,
   ProxyResponse,
   RequestItem,
@@ -46,7 +47,7 @@ import { RunnerModal } from "./components/RunnerModal";
 import { CollectionModal, type CollectionTab } from "./components/CollectionModal";
 import { EnvModal } from "./components/EnvModal";
 import { CurlModal, type CurlImportTarget } from "./components/CurlModal";
-import { ImportModal } from "./components/ImportModal";
+import { ImportModal, type ImportResult } from "./components/ImportModal";
 import { DashboardView } from "./components/DashboardView";
 import { Footer } from "./components/Footer";
 import { ConsoleDrawer } from "./components/ConsoleDrawer";
@@ -179,6 +180,7 @@ export default function App() {
   const [editTargetVarKey, setEditTargetVarKey] = useState<string | null>(null);
   const [curlOpen, setCurlOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importInitialFiles, setImportInitialFiles] = useState<File[] | null>(null);
   const [importDropdownOpen, setImportDropdownOpen] = useState(false);
   const [snippetOpen, setSnippetOpen] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -856,7 +858,6 @@ export default function App() {
   const deleteEnvironment = (id: string) => {
     const env = data.environments.find((e) => e.id === id);
     if (!env) return;
-    if (!window.confirm(`Delete environment "${env.name}"?`)) return;
     const next = data.environments.filter((e) => e.id !== id);
     patchData((prev) => ({
       ...prev,
@@ -1015,7 +1016,8 @@ export default function App() {
   };
 
   const deleteCollection = (id: string) => {
-    if (!window.confirm("Delete this collection?")) return;
+    const col = data.collections.find((c) => c.id === id);
+    if (!col) return;
     patchData((prev) => ({
       ...prev,
       collections: prev.collections.filter((c) => c.id !== id),
@@ -1025,6 +1027,7 @@ export default function App() {
         t.collectionId === id ? { ...t, requestId: null, collectionId: null, dirty: true } : t
       )
     );
+    flashImport(`Deleted collection "${col.name}"`);
   };
 
   const exportCol = (id: string) => {
@@ -1616,8 +1619,10 @@ export default function App() {
             multiple
             accept="application/json,.json,.md,.markdown,.doc,.docx,.txt,text/markdown,text/plain"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void importFile(file);
+              if (e.target.files && e.target.files.length > 0) {
+                setImportInitialFiles(Array.from(e.target.files));
+                setImportOpen(true);
+              }
               e.target.value = "";
             }}
           />
@@ -2126,16 +2131,82 @@ export default function App() {
       )}
       {importOpen && (
         <ImportModal
-          onImportSuccess={({ collections, environments, message }) => {
-            patchData((prev) => ({
-              ...prev,
-              collections: [...prev.collections, ...collections],
-              environments: [...prev.environments, ...environments],
-              activeEnvId: environments[0]?.id ?? prev.activeEnvId,
-            }));
+          existingCollections={data.collections}
+          initialFiles={importInitialFiles}
+          onImportSuccess={(result: ImportResult) => {
+            const {
+              collections,
+              environments,
+              targetMode,
+              targetColId,
+              targetFolderMode,
+              targetFolderId,
+              activeEnvId,
+              message,
+            } = result;
+
+            patchData((prev) => {
+              let nextCollections = [...prev.collections];
+
+              if (targetMode === "existing" && targetColId) {
+                const targetCol = nextCollections.find((c) => c.id === targetColId);
+                if (targetCol) {
+                  for (const col of collections) {
+                    if (targetFolderMode === "as-subfolder") {
+                      const subfolder: FolderItem = {
+                        id: uid("fld"),
+                        name: col.name,
+                        type: "folder",
+                        children: col.children,
+                      };
+                      nextCollections = insertNode(
+                        nextCollections,
+                        targetColId,
+                        targetFolderId ?? null,
+                        subfolder
+                      );
+                    } else if (targetFolderMode === "existing-folder" && targetFolderId) {
+                      for (const child of col.children) {
+                        nextCollections = insertNode(
+                          nextCollections,
+                          targetColId,
+                          targetFolderId,
+                          child
+                        );
+                      }
+                    } else {
+                      for (const child of col.children) {
+                        nextCollections = insertNode(nextCollections, targetColId, null, child);
+                      }
+                    }
+                  }
+                }
+              } else {
+                nextCollections = [...nextCollections, ...collections];
+              }
+
+              const nextEnvironments = [...prev.environments, ...environments];
+              const nextActiveEnvId =
+                activeEnvId !== undefined && activeEnvId !== null
+                  ? activeEnvId
+                  : environments.length > 0
+                  ? environments[0].id
+                  : prev.activeEnvId;
+
+              return {
+                ...prev,
+                collections: nextCollections,
+                environments: nextEnvironments,
+                activeEnvId: nextActiveEnvId,
+              };
+            });
+
             flashImport(message);
           }}
-          onClose={() => setImportOpen(false)}
+          onClose={() => {
+            setImportOpen(false);
+            setImportInitialFiles(null);
+          }}
         />
       )}
       <SettingsModal

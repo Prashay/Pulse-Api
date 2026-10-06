@@ -72,6 +72,7 @@ export function Sidebar(props: Props) {
     return "default";
   });
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -89,7 +90,12 @@ export function Sidebar(props: Props) {
 
   useEffect(() => {
     if (!menu) return;
-    const onDocClick = () => setMenu(null);
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setMenu(null);
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenu(null);
     };
@@ -657,6 +663,17 @@ export function Sidebar(props: Props) {
                       ✏️
                     </button>
                     <button
+                      className="tree-action-btn danger-hover"
+                      title={`Delete collection "${col.name}"`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onDeleteCollection(col.id);
+                      }}
+                      aria-label={`Delete collection ${col.name}`}
+                    >
+                      ✕
+                    </button>
+                    <button
                       className="tree-action-btn"
                       title="More options"
                       onClick={(e) => {
@@ -804,12 +821,14 @@ export function Sidebar(props: Props) {
 
       {menu && (
         <div
+          ref={menuRef}
           className="ctx"
           style={{ top: menu.y, left: Math.min(menu.x, 160) }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onEditCollection?.(menu.id, "scripts-pre");
               setMenu(null);
             }}
@@ -817,7 +836,8 @@ export function Sidebar(props: Props) {
             ⚡ Scripts & Settings
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onNewRequest(menu.id, null);
               setMenu(null);
             }}
@@ -825,7 +845,8 @@ export function Sidebar(props: Props) {
             Add request
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onNewFolder(menu.id, null);
               setMenu(null);
             }}
@@ -833,7 +854,8 @@ export function Sidebar(props: Props) {
             Add folder
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onRunCollection(menu.id);
               setMenu(null);
             }}
@@ -841,7 +863,8 @@ export function Sidebar(props: Props) {
             Run collection
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onExportCollection(menu.id);
               setMenu(null);
             }}
@@ -850,7 +873,8 @@ export function Sidebar(props: Props) {
           </button>
           {props.onDuplicateCollection && (
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 props.onDuplicateCollection?.(menu.id);
                 setMenu(null);
               }}
@@ -859,7 +883,8 @@ export function Sidebar(props: Props) {
             </button>
           )}
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               const targetCol = props.collections.find((c) => c.id === menu.id);
               if (targetCol) {
                 setEditingId(targetCol.id);
@@ -871,7 +896,8 @@ export function Sidebar(props: Props) {
             Rename
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               props.onDeleteCollection(menu.id);
               setMenu(null);
             }}
@@ -1022,11 +1048,10 @@ function NodeList(props: {
                   </button>
                   <button
                     className="tree-action-btn danger-hover"
-                    title="Delete folder"
-                    onClick={() => {
-                      if (window.confirm(`Delete folder "${node.name}" and all its contents?`)) {
-                        props.onDeleteNode(node.id);
-                      }
+                    title={`Delete folder "${node.name}"`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onDeleteNode(node.id);
                     }}
                   >
                     ✕
