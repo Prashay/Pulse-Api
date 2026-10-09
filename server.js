@@ -102,7 +102,7 @@ app.post("/api/proxy", async (req, res) => {
     url,
     headers = {},
     body,
-    timeout = 30000,
+    timeout = 0,
   } = req.body ?? {};
 
   if (!url || typeof url !== "string") {
@@ -171,7 +171,8 @@ app.post("/api/proxy", async (req, res) => {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Number(timeout) || 30000);
+  const parsedTimeout = Math.max(0, Number(timeout) || 0);
+  const timer = parsedTimeout > 0 ? setTimeout(() => controller.abort(), parsedTimeout) : null;
 
   try {
     const outbound = new Headers();
@@ -199,7 +200,7 @@ app.post("/api/proxy", async (req, res) => {
 
     const response = await fetch(url, init);
     const buffer = Buffer.from(await response.arrayBuffer());
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
 
     const respHeaders = {};
     response.headers.forEach((value, key) => {
@@ -229,10 +230,10 @@ app.post("/api/proxy", async (req, res) => {
       size: buffer.length,
     });
   } catch (err) {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     const aborted = err && err.name === "AbortError";
     const message = aborted
-      ? `Request timed out after ${timeout}ms`
+      ? `Request timed out after ${parsedTimeout}ms`
       : err instanceof Error
         ? err.message
         : String(err);

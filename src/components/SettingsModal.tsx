@@ -160,9 +160,25 @@ export const SettingsModal: FC<Props> = ({
   onResetPanelSizes,
 }) => {
   const [localSettings, setLocalSettings] = useState<FontSettings>(settings);
-  const [activeTab, setActiveTab] = useState<"theme" | "typography" | "layout">("theme");
+  const [activeTab, setActiveTab] = useState<"theme" | "typography" | "layout" | "network">("theme");
   const [resetNotif, setResetNotif] = useState(false);
   const [panelResetNotif, setPanelResetNotif] = useState(false);
+  const [requestTimeout, setRequestTimeout] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("pulse_request_timeout");
+      if (stored !== null && stored !== "") {
+        const val = Number(stored);
+        if (!isNaN(val)) return Math.max(0, val);
+      }
+    } catch {}
+    return 0;
+  });
+
+  const handleTimeoutChange = (val: number) => {
+    const next = Math.max(0, val);
+    setRequestTimeout(next);
+    localStorage.setItem("pulse_request_timeout", String(next));
+  };
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -259,6 +275,12 @@ export const SettingsModal: FC<Props> = ({
             onClick={() => setActiveTab("layout")}
           >
             ◫ Panel Layout & Workspace
+          </button>
+          <button
+            className={`settings-nav-tab ${activeTab === "network" ? "active" : ""}`}
+            onClick={() => setActiveTab("network")}
+          >
+            ⚡ Network & Timeout
           </button>
         </div>
 
@@ -624,6 +646,79 @@ export const SettingsModal: FC<Props> = ({
                 >
                   {panelResetNotif ? "✓ Reset!" : "Reset Panel Sizes"}
                 </button>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }} />
+              <button className="btn primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "network" && (
+          <div className="settings-tab-pane">
+            <div className="settings-section">
+              <div className="settings-label-row">
+                <div>
+                  <div className="settings-label">HTTP Request Timeout</div>
+                  <div className="settings-sublabel">
+                    Set maximum wait time before aborting an outbound HTTP request. Set to 0 for unlimited / no timeout (recommended for slow APIs, file processing, and LLM queries).
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={requestTimeout}
+                    onChange={(e) => handleTimeoutChange(Number(e.target.value) || 0)}
+                    style={{
+                      width: 100,
+                      padding: "4px 8px",
+                      background: "var(--bg)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4,
+                      color: "var(--text)",
+                      fontFamily: "var(--mono)",
+                      fontSize: 12,
+                      textAlign: "right",
+                    }}
+                  />
+                  <span className="muted" style={{ fontSize: 12 }}>ms</span>
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {[
+                  { label: "0 (Unlimited / No Timeout)", val: 0 },
+                  { label: "30s (30,000 ms)", val: 30000 },
+                  { label: "60s (60,000 ms)", val: 60000 },
+                  { label: "120s (2 min)", val: 120000 },
+                  { label: "300s (5 min)", val: 300000 },
+                ].map((preset) => (
+                  <button
+                    key={preset.val}
+                    className={`btn sm ${requestTimeout === preset.val ? "primary" : "ghost"}`}
+                    onClick={() => handleTimeoutChange(preset.val)}
+                    style={{ fontSize: 11.5 }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="settings-section" style={{ background: "var(--bg-2)", padding: 14, borderRadius: 6, border: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>💡</span>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6 }}>
+                  <div><b>Per-Environment Override:</b> You can set a <code>timeout</code> variable in any Environment (e.g. <code>timeout = 60000</code> or <code>timeout = 0</code>) to customize timeouts per environment.</div>
+                  <div style={{ marginTop: 4 }}><b>Why timeout was 30000ms:</b> Previously, request proxy layers defaulted strictly to a 30-second abort timer. Pulse now respects <code>0</code> (unlimited) and custom timeout configurations across native desktop IPC, local proxy, and direct fetch.</div>
+                </div>
               </div>
             </div>
 

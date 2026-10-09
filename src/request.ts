@@ -353,6 +353,47 @@ export interface SendRequestOptions {
   requestId?: string | null;
   parentFolders?: FolderItem[];
   onCollectionUpdate?: (updatedVariables: KeyValue[]) => void;
+  timeout?: number;
+}
+
+export function resolveRequestTimeout(
+  options?: SendRequestOptions,
+  env?: Environment | null,
+  collection?: Collection | null,
+  executionVars?: Record<string, string> | Map<string, string> | null
+): number {
+  // 1. Explicit options passed
+  if (options?.timeout !== undefined && options.timeout !== null) {
+    const val = Number(options.timeout);
+    if (!isNaN(val)) return Math.max(0, val);
+  }
+
+  // 2. Variable override in executionVars / env / collection (e.g. {{timeout}})
+  const safeEnv = env || null;
+  const safeCol = collection || null;
+  const varHit =
+    lookupVariable("timeout", safeEnv, safeCol, executionVars) ||
+    lookupVariable("request_timeout", safeEnv, safeCol, executionVars) ||
+    lookupVariable("requestTimeout", safeEnv, safeCol, executionVars);
+
+  if (varHit && varHit.value !== undefined && varHit.value !== null && varHit.value !== "") {
+    const val = Number(varHit.value);
+    if (!isNaN(val)) return Math.max(0, val);
+  }
+
+  // 3. User setting in localStorage ("pulse_request_timeout")
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("pulse_request_timeout");
+      if (stored !== null && stored !== "") {
+        const val = Number(stored);
+        if (!isNaN(val)) return Math.max(0, val);
+      }
+    } catch {}
+  }
+
+  // 4. Default: 0 (unlimited timeout / never abort). Prevents unwanted 30000ms aborts.
+  return 0;
 }
 
 export async function sendRequest(
@@ -458,6 +499,7 @@ export async function sendRequest(
 
   // 2. Build Outbound Request with interpolated variables (including newly set collection/env/execution vars)
   const outbound = buildOutbound(effectiveSnap, effectiveEnv, effectiveCollection, executionVars);
+  const requestTimeout = resolveRequestTimeout(options, effectiveEnv, effectiveCollection, executionVars);
 
   // 3. Dispatch Request: Native Desktop IPC (if available) -> Local Proxy -> Direct Fetch fallback
   let responseData: ProxyResponse | null = null;
@@ -470,7 +512,7 @@ export async function sendRequest(
         url: outbound.url,
         headers: outbound.headers,
         body: outbound.body,
-        timeout: 30000,
+        timeout: requestTimeout,
       });
     } catch (ipcErr) {
       console.warn("Desktop native IPC proxy encountered error, trying HTTP proxy:", ipcErr);
@@ -490,7 +532,7 @@ export async function sendRequest(
           url: outbound.url,
           headers: outbound.headers,
           body: outbound.body,
-          timeout: 30000,
+          timeout: requestTimeout,
         }),
       });
       if (!res.ok) {
@@ -510,6 +552,7 @@ export async function sendRequest(
       }
     } catch (proxyErr) {
       // Layer 3: Direct Client-Side Fetch (fallback if proxy is unreachable)
+      let directTimer: any = null;
       try {
         const started = Date.now();
         const directHeaders = new Headers();
@@ -518,14 +561,21 @@ export async function sendRequest(
             directHeaders.set(k, v);
           } catch {}
         }
+        const directController = new AbortController();
+        directTimer = requestTimeout > 0
+          ? setTimeout(() => directController.abort(), requestTimeout)
+          : null;
+
         const directInit: RequestInit = {
           method: outbound.method,
           headers: directHeaders,
+          signal: directController.signal,
         };
         if (outbound.body && !["GET", "HEAD"].includes(outbound.method.toUpperCase())) {
           directInit.body = outbound.body;
         }
         const directRes = await fetch(outbound.url, directInit);
+        if (directTimer) clearTimeout(directTimer);
         const text = await directRes.text();
         const respHeaders: Record<string, string> = {};
         directRes.headers.forEach((v, k) => {
@@ -542,14 +592,18 @@ export async function sendRequest(
           size: new Blob([text]).size,
         };
       } catch (directErr) {
+        if (directTimer) clearTimeout(directTimer);
+        const isAbort = (directErr as any)?.name === "AbortError";
         const errMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
         responseData = {
           ok: false,
           error: true,
           status: 0,
-          statusText: "Proxy Error",
+          statusText: isAbort ? "Timeout" : "Proxy Error",
           headers: {},
-          body: `Unable to reach proxy server (${errMsg}). Ensure the desktop app or local proxy server is running.`,
+          body: isAbort
+            ? `Request timed out after ${requestTimeout}ms`
+            : `Unable to reach proxy server (${errMsg}). Ensure the desktop app or local proxy server is running.`,
           time: 0,
           size: 0,
         };

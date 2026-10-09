@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthConfig, BodyMode, Collection, Environment, HttpMethod, RequestSnapshot } from "../types";
 import { METHODS, METHOD_COLORS } from "../types";
 import { KeyValueEditor } from "./KeyValueEditor";
@@ -98,6 +98,112 @@ export function RequestPane(props: Props) {
 
   const setAuth = (patch: Partial<AuthConfig>) =>
     props.onChange({ auth: { ...draft.auth, ...patch } });
+
+  // Request Body Search & Replace state
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bodySearchInputRef = useRef<HTMLInputElement>(null);
+  const [bodySearchOpen, setBodySearchOpen] = useState(false);
+  const [bodySearchTerm, setBodySearchTerm] = useState("");
+  const [bodyReplaceTerm, setBodyReplaceTerm] = useState("");
+  const [showReplace, setShowReplace] = useState(false);
+  const [bodySearchCase, setBodySearchCase] = useState(false);
+  const [bodyMatchIndex, setBodyMatchIndex] = useState(0);
+
+  // Compute matches for request body
+  const bodyMatches = useMemo(() => {
+    if (!draft.body || !bodySearchTerm) return [];
+    const text = draft.body;
+    const flags = bodySearchCase ? "g" : "gi";
+    let regex: RegExp;
+    try {
+      regex = new RegExp(bodySearchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+    } catch {
+      return [];
+    }
+    const matches: { start: number; end: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      matches.push({ start: m.index, end: m.index + m[0].length });
+      if (m.index === regex.lastIndex) regex.lastIndex++;
+      if (matches.length >= 1500) break;
+    }
+    return matches;
+  }, [draft.body, bodySearchTerm, bodySearchCase]);
+
+  // Jump to match in textarea and auto-scroll
+  const selectMatchInTextarea = useCallback(
+    (idx: number) => {
+      if (!bodyTextareaRef.current || bodyMatches.length === 0) return;
+      const safeIdx = ((idx % bodyMatches.length) + bodyMatches.length) % bodyMatches.length;
+      const match = bodyMatches[safeIdx];
+      if (!match) return;
+      const textarea = bodyTextareaRef.current;
+      textarea.focus();
+      textarea.setSelectionRange(match.start, match.end);
+
+      const textUpToMatch = textarea.value.slice(0, match.start);
+      const lineNum = textUpToMatch.split("\n").length;
+      const totalLines = textarea.value.split("\n").length;
+      const scrollPercent = lineNum / Math.max(1, totalLines);
+      textarea.scrollTop = Math.max(0, scrollPercent * textarea.scrollHeight - textarea.clientHeight / 2);
+    },
+    [bodyMatches]
+  );
+
+  const handleNextBodyMatch = () => {
+    if (bodyMatches.length === 0) return;
+    const nextIdx = (bodyMatchIndex + 1) % bodyMatches.length;
+    setBodyMatchIndex(nextIdx);
+    selectMatchInTextarea(nextIdx);
+  };
+
+  const handlePrevBodyMatch = () => {
+    if (bodyMatches.length === 0) return;
+    const prevIdx = (bodyMatchIndex - 1 + bodyMatches.length) % bodyMatches.length;
+    setBodyMatchIndex(prevIdx);
+    selectMatchInTextarea(prevIdx);
+  };
+
+  const handleReplaceOne = () => {
+    if (bodyMatches.length === 0 || !bodyTextareaRef.current) return;
+    const safeIdx = ((bodyMatchIndex % bodyMatches.length) + bodyMatches.length) % bodyMatches.length;
+    const match = bodyMatches[safeIdx];
+    if (!match) return;
+    const currentText = draft.body;
+    const newText = currentText.slice(0, match.start) + bodyReplaceTerm + currentText.slice(match.end);
+    props.onChange({ body: newText });
+  };
+
+  const handleReplaceAll = () => {
+    if (bodyMatches.length === 0) return;
+    const flags = bodySearchCase ? "g" : "gi";
+    try {
+      const regex = new RegExp(bodySearchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+      const newText = draft.body.replace(regex, bodyReplaceTerm);
+      props.onChange({ body: newText });
+    } catch {}
+  };
+
+  // Keyboard shortcut for Request Body Search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        const activeEl = document.activeElement;
+        const isInsideRequest = activeEl && activeEl.closest(".request-pane");
+        if (isInsideRequest && props.reqTab === "body" && draft.bodyMode !== "none") {
+          e.preventDefault();
+          e.stopPropagation();
+          setBodySearchOpen(true);
+          setTimeout(() => {
+            bodySearchInputRef.current?.focus();
+            bodySearchInputRef.current?.select();
+          }, 30);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [props.reqTab, draft.bodyMode]);
 
   const resolvedUrl = useMemo(
     () => interpolate(draft.url, env ?? null, collection ?? null),
@@ -1149,10 +1255,21 @@ export function RequestPane(props: Props) {
                       {mode}
                     </button>
                   ))}
+                  {draft.bodyMode !== "none" && (
+                    <button
+                      className={`btn sm ghost ${bodySearchOpen ? "active" : ""}`}
+                      style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4 }}
+                      onClick={() => setBodySearchOpen((prev) => !prev)}
+                      title="Find & Replace in request body (Ctrl+F)"
+                    >
+                      <span>🔍</span>
+                      <span>Find</span>
+                    </button>
+                  )}
                   {(draft.bodyMode === "json" || draft.bodyMode === "raw") && (
                     <button
-                      className={`btn sm ghost ${beautifyStatus === "success" ? "btn-success" : beautifyStatus === "error" ? "btn-danger" : ""}`}
-                      style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4 }}
+                      className={`btn sm ghost body-beautify-btn ${beautifyStatus === "success" ? "btn-success" : beautifyStatus === "error" ? "btn-danger" : ""}`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                       onClick={handleBeautifyJson}
                       title="Beautify / Format JSON payload"
                     >
@@ -1167,6 +1284,144 @@ export function RequestPane(props: Props) {
                     </button>
                   )}
                 </div>
+
+                {bodySearchOpen && draft.bodyMode !== "none" && (
+                  <div className="req-body-search-bar">
+                    <div className="req-body-search-input-wrap">
+                      <span style={{ fontSize: 11, opacity: 0.65 }}>🔍</span>
+                      <input
+                        ref={bodySearchInputRef}
+                        type="text"
+                        value={bodySearchTerm}
+                        onChange={(e) => {
+                          setBodySearchTerm(e.target.value);
+                          setBodyMatchIndex(0);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (e.shiftKey) handlePrevBodyMatch();
+                            else handleNextBodyMatch();
+                          } else if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            handleNextBodyMatch();
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            handlePrevBodyMatch();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setBodySearchOpen(false);
+                          }
+                        }}
+                        placeholder="Find in request body... (Enter: Next, Shift+Enter: Prev)"
+                        className="req-body-search-input"
+                      />
+                      {bodySearchTerm && (
+                        <button
+                          type="button"
+                          className="btn-clear"
+                          style={{ background: "none", border: "none", color: "var(--text-mute)", cursor: "pointer", fontSize: 10, padding: 0 }}
+                          onClick={() => {
+                            setBodySearchTerm("");
+                            setBodyMatchIndex(0);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`btn sm ghost ${bodySearchCase ? "active" : ""}`}
+                      onClick={() => setBodySearchCase((c) => !c)}
+                      title={bodySearchCase ? "Match case: ON" : "Match case: OFF"}
+                      style={{ padding: "2px 6px", height: 24, fontSize: 11 }}
+                    >
+                      Aa
+                    </button>
+
+                    <div className="req-body-search-count">
+                      {bodySearchTerm ? (bodyMatches.length > 0 ? `${bodyMatchIndex + 1} of ${bodyMatches.length}` : "No matches") : ""}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={handlePrevBodyMatch}
+                        disabled={bodyMatches.length === 0}
+                        title="Previous match (Shift+Enter or ↑)"
+                        style={{ padding: "2px 5px", height: 24, fontSize: 10 }}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={handleNextBodyMatch}
+                        disabled={bodyMatches.length === 0}
+                        title="Next match (Enter or ↓)"
+                        style={{ padding: "2px 5px", height: 24, fontSize: 10 }}
+                      >
+                        ▼
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`btn sm ghost ${showReplace ? "active" : ""}`}
+                      onClick={() => setShowReplace((r) => !r)}
+                      title="Toggle Replace"
+                      style={{ padding: "2px 6px", height: 24, fontSize: 11 }}
+                    >
+                      Replace...
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn sm ghost"
+                      onClick={() => setBodySearchOpen(false)}
+                      title="Close search (Esc)"
+                      style={{ marginLeft: "auto", padding: "2px 6px", height: 24, fontSize: 11 }}
+                    >
+                      ✕
+                    </button>
+
+                    {showReplace && (
+                      <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <div className="req-body-search-input-wrap" style={{ flex: 1 }}>
+                          <input
+                            type="text"
+                            value={bodyReplaceTerm}
+                            onChange={(e) => setBodyReplaceTerm(e.target.value)}
+                            placeholder="Replace with..."
+                            className="req-body-search-input"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn sm ghost"
+                          onClick={handleReplaceOne}
+                          disabled={bodyMatches.length === 0}
+                          style={{ padding: "2px 8px", height: 24, fontSize: 11 }}
+                        >
+                          Replace
+                        </button>
+                        <button
+                          type="button"
+                          className="btn sm ghost"
+                          onClick={handleReplaceAll}
+                          disabled={bodyMatches.length === 0}
+                          style={{ padding: "2px 8px", height: 24, fontSize: 11 }}
+                        >
+                          Replace All
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {draft.bodyMode === "none" ? (
                   <div className="empty">This request does not have a body</div>
                 ) : (
@@ -1188,6 +1443,7 @@ export function RequestPane(props: Props) {
                       </button>
                     )}
                     <textarea
+                      ref={bodyTextareaRef}
                       className="body-editor"
                       spellCheck={false}
                       value={draft.body}
