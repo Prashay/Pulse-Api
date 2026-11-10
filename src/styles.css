@@ -970,7 +970,6 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   color: var(--text);
 }
 .tabs-more-actions {
-  position: relative;
   display: flex;
   align-items: center;
   margin-left: 2px;
@@ -993,14 +992,39 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   background: var(--bg-3);
   color: var(--text);
 }
-.tab-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 1000;
-  min-width: 180px;
+.tab-menu {
+  --tab-menu-width: min(180px, calc(100vw - 8px));
+  position: fixed;
+  z-index: 1100;
+  width: var(--tab-menu-width);
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.tab-menu > button {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tab-menu > button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.tab-menu > button:disabled {
+  color: var(--text-mute);
+  cursor: default;
 }
 .context-menu-divider {
+  flex-shrink: 0;
   height: 1px;
   background: var(--border);
   margin: 4px 0;
@@ -1803,6 +1827,65 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
 .body-editor:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.json-body-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--app-code-font-size, 12px);
+  font-weight: 500;
+  line-height: 1.6;
+}
+.json-body-editor:focus-within {
+  border-color: var(--accent);
+}
+.json-body-editor .cm-editor {
+  height: 100%;
+}
+.json-body-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.json-body-editor .cm-editor .cm-scroller {
+  font-family: inherit;
+  line-height: inherit;
+}
+.json-body-editor .cm-editor .cm-content {
+  padding: 12px 10px;
+  caret-color: var(--text);
+}
+.json-body-editor .cm-editor .cm-gutters {
+  background: var(--bg-2);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.json-body-editor .cm-foldGutter .cm-gutterElement {
+  min-width: 24px;
+  text-align: center;
+}
+.json-body-editor .cm-foldGutter button {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  line-height: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.json-body-editor .cm-foldGutter button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.json-body-editor .cm-editor .cm-foldPlaceholder {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-dim);
 }
 
 /* ==========================================================================

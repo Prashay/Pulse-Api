@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { foldedRanges, unfoldEffect } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
 import type { AuthConfig, BodyMode, Collection, Environment, HttpMethod, RequestSnapshot } from "../types";
 import { METHODS, METHOD_COLORS } from "../types";
 import { KeyValueEditor } from "./KeyValueEditor";
+import { JsonBodyEditor } from "./JsonBodyEditor";
 import { extractVariables, interpolate, lookupVariable } from "../request";
 import { parseCurl } from "../curl";
 
@@ -15,6 +18,7 @@ interface WsMessage {
 }
 
 interface Props {
+  tabId: string;
   draft: RequestSnapshot;
   sending: boolean;
   reqTab: ReqTab;
@@ -101,6 +105,7 @@ export function RequestPane(props: Props) {
 
   // Request Body Search & Replace state
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const jsonBodyEditorRef = useRef<EditorView | null>(null);
   const bodySearchInputRef = useRef<HTMLInputElement>(null);
   const [bodySearchOpen, setBodySearchOpen] = useState(false);
   const [bodySearchTerm, setBodySearchTerm] = useState("");
@@ -109,10 +114,9 @@ export function RequestPane(props: Props) {
   const [bodySearchCase, setBodySearchCase] = useState(false);
   const [bodyMatchIndex, setBodyMatchIndex] = useState(0);
 
-  // Compute matches for request body
+  const searchableBody = draft.bodyMode === "json" ? draft.body.replace(/\r\n?/g, "\n") : draft.body;
   const bodyMatches = useMemo(() => {
-    if (!draft.body || !bodySearchTerm) return [];
-    const text = draft.body;
+    if (!searchableBody || !bodySearchTerm) return [];
     const flags = bodySearchCase ? "g" : "gi";
     let regex: RegExp;
     try {
@@ -122,22 +126,31 @@ export function RequestPane(props: Props) {
     }
     const matches: { start: number; end: number }[] = [];
     let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) !== null) {
+    while ((m = regex.exec(searchableBody)) !== null) {
       matches.push({ start: m.index, end: m.index + m[0].length });
       if (m.index === regex.lastIndex) regex.lastIndex++;
       if (matches.length >= 1500) break;
     }
     return matches;
-  }, [draft.body, bodySearchTerm, bodySearchCase]);
+  }, [searchableBody, bodySearchTerm, bodySearchCase]);
 
-  // Jump to match in textarea and auto-scroll
-  const selectMatchInTextarea = useCallback(
+  const selectBodyMatch = useCallback(
     (idx: number) => {
-      if (!bodyTextareaRef.current || bodyMatches.length === 0) return;
+      if (bodyMatches.length === 0) return;
       const safeIdx = ((idx % bodyMatches.length) + bodyMatches.length) % bodyMatches.length;
       const match = bodyMatches[safeIdx];
-      if (!match) return;
+      const editor = jsonBodyEditorRef.current;
+      if (editor) {
+        const effects = [EditorView.scrollIntoView(match.start, { y: "center" })];
+        foldedRanges(editor.state).between(match.start, match.end, (from, to) => {
+          if (from < match.end && to > match.start) effects.push(unfoldEffect.of({ from, to }));
+        });
+        editor.dispatch({ selection: { anchor: match.start, head: match.end }, effects });
+        editor.focus();
+        return;
+      }
       const textarea = bodyTextareaRef.current;
+      if (!textarea) return;
       textarea.focus();
       textarea.setSelectionRange(match.start, match.end);
 
@@ -154,23 +167,22 @@ export function RequestPane(props: Props) {
     if (bodyMatches.length === 0) return;
     const nextIdx = (bodyMatchIndex + 1) % bodyMatches.length;
     setBodyMatchIndex(nextIdx);
-    selectMatchInTextarea(nextIdx);
+    selectBodyMatch(nextIdx);
   };
 
   const handlePrevBodyMatch = () => {
     if (bodyMatches.length === 0) return;
     const prevIdx = (bodyMatchIndex - 1 + bodyMatches.length) % bodyMatches.length;
     setBodyMatchIndex(prevIdx);
-    selectMatchInTextarea(prevIdx);
+    selectBodyMatch(prevIdx);
   };
 
   const handleReplaceOne = () => {
-    if (bodyMatches.length === 0 || !bodyTextareaRef.current) return;
+    if (bodyMatches.length === 0) return;
     const safeIdx = ((bodyMatchIndex % bodyMatches.length) + bodyMatches.length) % bodyMatches.length;
     const match = bodyMatches[safeIdx];
     if (!match) return;
-    const currentText = draft.body;
-    const newText = currentText.slice(0, match.start) + bodyReplaceTerm + currentText.slice(match.end);
+    const newText = searchableBody.slice(0, match.start) + bodyReplaceTerm + searchableBody.slice(match.end);
     props.onChange({ body: newText });
   };
 
@@ -1442,20 +1454,27 @@ export function RequestPane(props: Props) {
                         </span>
                       </button>
                     )}
-                    <textarea
-                      ref={bodyTextareaRef}
-                      className="body-editor"
-                      spellCheck={false}
-                      value={draft.body}
-                      placeholder={
-                        draft.bodyMode === "json"
-                          ? '{\n  "key": "value"\n}'
-                          : draft.bodyMode === "form-urlencoded"
+                    {draft.bodyMode === "json" ? (
+                      <JsonBodyEditor
+                        key={props.tabId}
+                        value={draft.body}
+                        editorRef={jsonBodyEditorRef}
+                        onChange={(body) => props.onChange({ body })}
+                      />
+                    ) : (
+                      <textarea
+                        ref={bodyTextareaRef}
+                        className="body-editor"
+                        spellCheck={false}
+                        value={draft.body}
+                        placeholder={
+                          draft.bodyMode === "form-urlencoded"
                             ? "key1=value1\nkey2=value2"
                             : "Raw request body"
-                      }
-                      onChange={(e) => props.onChange({ body: e.target.value })}
-                    />
+                        }
+                        onChange={(e) => props.onChange({ body: e.target.value })}
+                      />
+                    )}
                   </div>
                 )}
                 {/* Live Body Variable Resolution Feedback */}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AppData,
   Collection,
@@ -59,6 +59,8 @@ import {
   type PanelLayoutMode,
   FONT_FAMILY_PRESETS,
   CODE_FONT_PRESETS,
+  UI_FONT_SIZE,
+  CODE_FONT_SIZE,
 } from "./components/SettingsModal";
 import { toCurl } from "./curl";
 
@@ -210,7 +212,7 @@ export default function App() {
     const defaultCodeFamily = CODE_FONT_PRESETS[0].value;
     const defaultSize = 12;
 
-    const initialSize = savedSize && savedSize !== "13" ? parseInt(savedSize, 10) || defaultSize : defaultSize;
+    const initialSize = savedSize ? parseInt(savedSize, 10) || defaultSize : defaultSize;
     const initialFamily =
       savedFamily && (savedFamily.includes("Plus Jakarta") || savedFamily.includes("Inter"))
         ? savedFamily
@@ -228,13 +230,6 @@ export default function App() {
     };
   });
 
-  const handleUpdateFontSettings = (next: FontSettings) => {
-    setFontSettings(next);
-    localStorage.setItem("pulse_font_size", String(next.fontSize));
-    localStorage.setItem("pulse_font_family", next.fontFamily);
-    localStorage.setItem("pulse_code_font_size", String(next.codeFontSize));
-    localStorage.setItem("pulse_code_font_family", next.codeFontFamily);
-  };
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleHeight, setConsoleHeight] = useState<number>(() => {
     const saved = localStorage.getItem("pulse_console_height");
@@ -266,31 +261,39 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const importDropdownRef = useRef<HTMLDivElement>(null);
   const [tabContextMenu, setTabContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [tabActionsOpen, setTabActionsOpen] = useState(false);
+  const [tabActionsAnchor, setTabActionsAnchor] = useState<{ top: number; right: number } | null>(null);
   const tabActionsDropdownRef = useRef<HTMLDivElement>(null);
+  const tabContextMenuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const menu = tabContextMenuRef.current;
+    if (!tabContextMenu || !menu) return;
+    menu.style.top = `${Math.max(4, Math.min(tabContextMenu.y, window.innerHeight - menu.offsetHeight - 4))}px`;
+  }, [tabContextMenu]);
 
   useEffect(() => {
-    if (!tabContextMenu && !tabActionsOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (tabActionsDropdownRef.current && tabActionsDropdownRef.current.contains(e.target as Node)) {
-        return;
-      }
+    if (!tabContextMenu && !tabActionsAnchor) return;
+    const closeTabMenus = () => {
       setTabContextMenu(null);
-      setTabActionsOpen(false);
+      setTabActionsAnchor(null);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (tabActionsDropdownRef.current?.contains(target) || tabContextMenuRef.current?.contains(target)) return;
+      closeTabMenus();
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setTabContextMenu(null);
-        setTabActionsOpen(false);
-      }
+      if (e.key === "Escape") closeTabMenus();
     };
     window.addEventListener("mousedown", onMouseDown);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeTabMenus);
     return () => {
       window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeTabMenus);
     };
-  }, [tabContextMenu, tabActionsOpen]);
+  }, [tabContextMenu, tabActionsAnchor]);
 
   const startResizingSidebar = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -476,7 +479,44 @@ export default function App() {
     document.documentElement.style.setProperty("--font", fontSettings.fontFamily);
     document.documentElement.style.setProperty("--app-code-font-size", `${fontSettings.codeFontSize}px`);
     document.documentElement.style.setProperty("--mono", fontSettings.codeFontFamily);
+    localStorage.setItem("pulse_font_size", String(fontSettings.fontSize));
+    localStorage.setItem("pulse_font_family", fontSettings.fontFamily);
+    localStorage.setItem("pulse_code_font_size", String(fontSettings.codeFontSize));
+    localStorage.setItem("pulse_code_font_family", fontSettings.codeFontFamily);
   }, [fontSettings]);
+
+  useEffect(() => {
+    const stepThreshold = 16;
+    let pendingDelta = 0;
+    let lastWheelTime = 0;
+
+    const onPinch = (event: WheelEvent) => {
+      // Chromium delivers touchpad pinch gestures as Ctrl-modified wheel events.
+      if (!event.ctrlKey || !event.deltaY) return;
+      event.preventDefault();
+
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : stepThreshold;
+      const delta = event.deltaY * unit;
+      if (event.timeStamp - lastWheelTime > 180 || Math.sign(pendingDelta) !== Math.sign(delta)) {
+        pendingDelta = 0;
+      }
+      lastWheelTime = event.timeStamp;
+      pendingDelta += delta;
+      if (Math.abs(pendingDelta) < stepThreshold) return;
+
+      const step = -Math.sign(pendingDelta);
+      pendingDelta = 0;
+      setFontSettings((prev) => {
+        const fontSize = Math.max(UI_FONT_SIZE.min, Math.min(UI_FONT_SIZE.max, prev.fontSize + step));
+        const codeFontSize = Math.max(CODE_FONT_SIZE.min, Math.min(CODE_FONT_SIZE.max, prev.codeFontSize + step));
+        if (fontSize === prev.fontSize && codeFontSize === prev.codeFontSize) return prev;
+        return { ...prev, fontSize, codeFontSize };
+      });
+    };
+
+    window.addEventListener("wheel", onPinch, { capture: true, passive: false });
+    return () => window.removeEventListener("wheel", onPinch, true);
+  }, []);
 
   useEffect(() => {
     if (!importDropdownOpen) return;
@@ -1808,7 +1848,10 @@ export default function App() {
         ) : (
           <>
             <main className="workspace">
-              <div className="tabs">
+              <div className="tabs" onScroll={() => {
+                setTabActionsAnchor(null);
+                setTabContextMenu(null);
+              }}>
                 {tabs.map((t) => (
                   <button
                     key={t.id}
@@ -1823,6 +1866,7 @@ export default function App() {
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
+                      setTabActionsAnchor(null);
                       setTabContextMenu({ id: t.id, x: e.clientX, y: e.clientY });
                     }}
                   >
@@ -1876,16 +1920,30 @@ export default function App() {
                     <button
                       className="tab-actions-btn"
                       title="Tab Options (Close other tabs, Close all...)"
-                      onClick={() => setTabActionsOpen((prev) => !prev)}
+                      aria-expanded={Boolean(tabActionsAnchor)}
+                      onClick={(e) => {
+                        setTabContextMenu(null);
+                        const { bottom, right } = e.currentTarget.getBoundingClientRect();
+                        setTabActionsAnchor((prev) => prev ? null : {
+                          top: bottom + 4,
+                          right: Math.min(right, window.innerWidth - 4),
+                        });
+                      }}
                     >
                       •••
                     </button>
-                    {tabActionsOpen && (
-                      <div className="context-menu tab-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                    {tabActionsAnchor && (
+                      <div
+                        className="tab-menu tab-dropdown-menu"
+                        style={{
+                          top: tabActionsAnchor.top,
+                          left: `max(4px, ${tabActionsAnchor.right}px - var(--tab-menu-width))`,
+                        }}
+                      >
                         <button
                           onClick={() => {
                             closeOtherTabs(activeTabId);
-                            setTabActionsOpen(false);
+                            setTabActionsAnchor(null);
                           }}
                         >
                           Close Other Tabs
@@ -1894,7 +1952,7 @@ export default function App() {
                           disabled={tabs.findIndex((t) => t.id === activeTabId) === tabs.length - 1}
                           onClick={() => {
                             closeTabsToRight(activeTabId);
-                            setTabActionsOpen(false);
+                            setTabActionsAnchor(null);
                           }}
                         >
                           Close Tabs to the Right
@@ -1902,7 +1960,7 @@ export default function App() {
                         <button
                           onClick={() => {
                             closeAllTabs();
-                            setTabActionsOpen(false);
+                            setTabActionsAnchor(null);
                           }}
                         >
                           Close All Tabs
@@ -1911,7 +1969,7 @@ export default function App() {
                         <button
                           onClick={() => {
                             duplicateTab(activeTabId);
-                            setTabActionsOpen(false);
+                            setTabActionsAnchor(null);
                           }}
                         >
                           Duplicate Tab
@@ -1933,6 +1991,7 @@ export default function App() {
                 <div className="editor" ref={editorRef}>
                   <div className="editor-top-area">
                     <RequestPane
+                      tabId={activeTab.id}
                       draft={activeTab.draft}
                       sending={Boolean(sending[activeTab.id])}
                       reqTab={reqTab}
@@ -2011,9 +2070,9 @@ export default function App() {
       </div>
       {tabContextMenu && (
         <div
-          className="context-menu"
-          style={{ top: tabContextMenu.y, left: tabContextMenu.x, zIndex: 3000 }}
-          onClick={(e) => e.stopPropagation()}
+          className="tab-menu"
+          ref={tabContextMenuRef}
+          style={{ left: `clamp(4px, ${tabContextMenu.x}px, calc(100vw - var(--tab-menu-width) - 4px))` }}
         >
           <button
             onClick={() => {
@@ -2213,7 +2272,7 @@ export default function App() {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         settings={fontSettings}
-        onUpdateSettings={handleUpdateFontSettings}
+        onUpdateSettings={setFontSettings}
         theme={theme}
         onUpdateTheme={(t) => {
           setTheme(t);

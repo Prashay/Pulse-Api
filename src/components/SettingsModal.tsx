@@ -8,6 +8,9 @@ export interface FontSettings {
   codeFontFamily: string;
 }
 
+export const UI_FONT_SIZE = { min: 11, max: 22 };
+export const CODE_FONT_SIZE = { min: 10, max: 24 };
+
 export interface ThemePreset {
   id: ThemeMode;
   name: string;
@@ -202,12 +205,12 @@ export const SettingsModal: FC<Props> = ({
   };
 
   const changeFontSize = (delta: number) => {
-    const next = Math.max(11, Math.min(22, localSettings.fontSize + delta));
+    const next = Math.max(UI_FONT_SIZE.min, Math.min(UI_FONT_SIZE.max, localSettings.fontSize + delta));
     update({ fontSize: next });
   };
 
   const changeCodeFontSize = (delta: number) => {
-    const next = Math.max(10, Math.min(24, localSettings.codeFontSize + delta));
+    const next = Math.max(CODE_FONT_SIZE.min, Math.min(CODE_FONT_SIZE.max, localSettings.codeFontSize + delta));
     update({ codeFontSize: next });
   };
 
@@ -396,7 +399,7 @@ export const SettingsModal: FC<Props> = ({
               <div className="settings-label-row">
                 <div>
                   <span className="settings-title">Application Font Size</span>
-                  <div className="settings-subtitle">Controls UI buttons, navigation, tree items, and labels</div>
+                  <div className="settings-subtitle">Pinch on the touchpad to adjust UI and editor text together</div>
                 </div>
                 <span className="settings-badge">{localSettings.fontSize}px</span>
               </div>
@@ -405,7 +408,7 @@ export const SettingsModal: FC<Props> = ({
                 <button
                   className="btn sm"
                   onClick={() => changeFontSize(-1)}
-                  disabled={localSettings.fontSize <= 11}
+                  disabled={localSettings.fontSize <= UI_FONT_SIZE.min}
                   title="Decrease font size"
                 >
                   A−
@@ -424,7 +427,7 @@ export const SettingsModal: FC<Props> = ({
                 <button
                   className="btn sm"
                   onClick={() => changeFontSize(1)}
-                  disabled={localSettings.fontSize >= 22}
+                  disabled={localSettings.fontSize >= UI_FONT_SIZE.max}
                   title="Increase font size"
                 >
                   A+
@@ -479,7 +482,7 @@ export const SettingsModal: FC<Props> = ({
                   <button
                     className="btn sm"
                     onClick={() => changeCodeFontSize(-1)}
-                    disabled={localSettings.codeFontSize <= 10}
+                    disabled={localSettings.codeFontSize <= CODE_FONT_SIZE.min}
                     title="Decrease code size"
                   >
                     −
@@ -487,7 +490,7 @@ export const SettingsModal: FC<Props> = ({
                   <button
                     className="btn sm"
                     onClick={() => changeCodeFontSize(1)}
-                    disabled={localSettings.codeFontSize >= 24}
+                    disabled={localSettings.codeFontSize >= CODE_FONT_SIZE.max}
                     title="Increase code size"
                   >
                     +

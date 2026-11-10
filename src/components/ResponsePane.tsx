@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import type { ProxyResponse } from "../types";
 import { formatBytes, prettyBody } from "../request";
+import { JsonBodyEditor } from "./JsonBodyEditor";
 
 type RespTab = "body" | "headers" | "tests";
 
@@ -57,6 +58,16 @@ export function ResponsePane({ response, sending }: Props) {
     if (!response) return "";
     return pretty ? prettyBody(response.body, contentType) : response.body;
   }, [response, pretty, contentType]);
+  const foldableJson = useMemo(() => {
+    if (!pretty || (!body.startsWith("{") && !body.startsWith("["))) return false;
+    try {
+      JSON.parse(body);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [body, pretty]);
+  const searchingBody = searchOpen && Boolean(searchTerm);
 
   // Keyboard shortcut (Ctrl+F / Cmd+F) to toggle and focus search
   useEffect(() => {
@@ -405,7 +416,10 @@ export function ResponsePane({ response, sending }: Props) {
           </div>
         )}
         {!sending && response && tab === "body" && (
-          <pre className="resp-pre">{bodyElements || "(empty)"}</pre>
+          <>
+            {foldableJson && <JsonBodyEditor value={body} hidden={searchingBody} />}
+            {(!foldableJson || searchingBody) && <pre className="resp-pre">{bodyElements || "(empty)"}</pre>}
+          </>
         )}
         {!sending && response && tab === "headers" && (
           <div className="resp-headers-wrapper">
