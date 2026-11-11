@@ -17,7 +17,6 @@ import { kv, uid } from "./id";
 import {
   createSampleCollections,
   createSampleEnvironments,
-  loadData,
   pushHistory,
   saveData,
 } from "./storage";
@@ -36,15 +35,15 @@ import { buildOutbound, collectRequests, sendRequest } from "./request";
 import {
   downloadJson,
   exportPostmanCollection,
-  extractDocxText,
-  importPostmanFile,
-  parseDocToCollection,
+  exportPostmanEnvironment,
+  parseImportFiles,
 } from "./importExport";
 import { Sidebar } from "./components/Sidebar";
 import { RequestPane, type ReqTab } from "./components/RequestPane";
 import { ResponsePane } from "./components/ResponsePane";
 import { RunnerModal } from "./components/RunnerModal";
 import { CollectionModal, type CollectionTab } from "./components/CollectionModal";
+import { CreateItemModal } from "./components/CreateItemModal";
 import { EnvModal } from "./components/EnvModal";
 import { CurlModal, type CurlImportTarget } from "./components/CurlModal";
 import { ImportModal, type ImportResult } from "./components/ImportModal";
@@ -102,8 +101,12 @@ function findPath(nodes: TreeNode[], id: string, acc: string[]): string[] | null
 }
 
 
-export default function App() {
-  const [data, setData] = useState<AppData>(() => loadData());
+export default function App({ initialData }: { initialData: AppData }) {
+  const [data, setData] = useState(initialData);
+  const [workspaceSaveError, setWorkspaceSaveError] = useState(false);
+  const [createItem, setCreateItem] = useState<
+    { kind: "collection" | "environment" } | { kind: "folder"; collectionId: string; folderId: string | null } | null
+  >(null);
   const [viewMode, setViewMode] = useState<"dashboard" | "studio">(() => {
     const saved = localStorage.getItem("pulse_view_mode");
     if (saved === "dashboard" || saved === "studio") return saved;
@@ -537,7 +540,12 @@ export default function App() {
   }, [importDropdownOpen]);
 
   useEffect(() => {
-    saveData(data);
+    try {
+      saveData(data);
+      setWorkspaceSaveError(false);
+    } catch {
+      setWorkspaceSaveError(true);
+    }
   }, [data]);
 
   const patchData = (patch: Partial<AppData> | ((prev: AppData) => AppData)) => {
@@ -744,6 +752,7 @@ export default function App() {
         ...prev,
         history: pushHistory(prev.history, {
           id: uid("hist"),
+          requestId: activeTab.requestId,
           timestamp: Date.now(),
           method: activeTab.draft.method,
           url: activeTab.draft.url,
@@ -804,9 +813,9 @@ export default function App() {
     }
   };
 
-  const newCollection = () => {
-    const name = window.prompt("Collection name", "New Collection");
-    if (!name) return;
+  const newCollection = () => setCreateItem({ kind: "collection" });
+
+  const saveNewCollection = (name: string) => {
     const col: Collection = { id: uid("col"), name, description: "", children: [] };
     patchData((prev) => ({ ...prev, collections: [...prev.collections, col] }));
   };
@@ -875,9 +884,9 @@ export default function App() {
     switchViewMode("studio");
   };
 
-  const createNewEnvironment = () => {
-    const name = window.prompt("Environment name", "New Environment");
-    if (!name) return;
+  const createNewEnvironment = () => setCreateItem({ kind: "environment" });
+
+  const saveNewEnvironment = (name: string) => {
     const env: Environment = {
       id: uid("env"),
       name,
@@ -997,7 +1006,10 @@ export default function App() {
     setActiveTabId(tab.id);
   };
 
-  const newFolder = (collectionId: string, folderId: string | null = null) => {
+  const newFolder = (collectionId: string, folderId: string | null) =>
+    setCreateItem({ kind: "folder", collectionId, folderId });
+
+  const saveNewFolder = (name: string, collectionId: string, folderId: string | null) => {
     let targetColId = collectionId;
     let createdCol: Collection | null = null;
     if (!targetColId || !data.collections.some((c) => c.id === targetColId)) {
@@ -1009,9 +1021,7 @@ export default function App() {
       }
     }
 
-    const name = window.prompt("Folder name", "New Folder");
-    if (!name || !name.trim()) return;
-    const folder: TreeNode = { id: uid("fld"), type: "folder", name: name.trim(), children: [] };
+    const folder: TreeNode = { id: uid("fld"), type: "folder", name, children: [] };
     patchData((prev) => {
       const base = createdCol ? [...prev.collections, createdCol] : prev.collections;
       return {
@@ -1019,7 +1029,7 @@ export default function App() {
         collections: insertNode(base, targetColId, folderId, folder),
       };
     });
-    flashImport(`Created folder "${name.trim()}"`);
+    flashImport(`Created folder "${name}"`);
   };
 
   const openEditCollection = (
@@ -1080,6 +1090,20 @@ export default function App() {
     flashImport(`Exported "${col.name}"`);
   };
 
+  const exportAllCollections = () => {
+    const { collections } = data;
+    if (collections.length === 0) return;
+    downloadJson("pulse-collections.json", collections.map(exportPostmanCollection));
+    flashImport(`Exported ${collections.length} collection${collections.length === 1 ? "" : "s"}`);
+  };
+
+  const exportAllEnvironments = () => {
+    const { environments } = data;
+    if (environments.length === 0) return;
+    downloadJson("pulse-environments.json", environments.map(exportPostmanEnvironment));
+    flashImport(`Exported ${environments.length} environment${environments.length === 1 ? "" : "s"}`);
+  };
+
   const duplicateCol = (id: string) => {
     let duplicatedName = "";
     patchData((prev) => {
@@ -1124,66 +1148,21 @@ export default function App() {
     window.setTimeout(() => setImportNotice(null), 3200);
   };
 
-  const importFile = async (file: File, preferEnv = false) => {
+  const importEnvironmentFile = async (file: File) => {
     try {
-      const isDoc = file.name.match(/\.(md|markdown|txt|doc|docx)$/i);
-      if (isDoc) {
-        let text = "";
-        if (file.name.toLowerCase().endsWith(".docx")) {
-          text = await extractDocxText(await file.arrayBuffer());
-        } else {
-          text = await file.text();
-        }
-        const col = parseDocToCollection(text, file.name);
-        if (col.children.length === 0) {
-          throw new Error("Could not find any API endpoints, cURL commands, or URLs in this document.");
-        }
-        patchData((prev) => ({ ...prev, collections: [...prev.collections, col] }));
-        flashImport(`Imported collection "${col.name}" with ${col.children.length} endpoint(s)`);
-        return;
+      const { collections, environments, errors } = await parseImportFiles([file]);
+      if (errors.length > 0) throw new Error(errors.join("\n"));
+      if (collections.length > 0 || environments.length === 0) {
+        throw new Error("Choose an environment JSON file or an environment export bundle.");
       }
-
-      const text = await file.text();
-      let json: unknown;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        // Fallback: If not valid JSON, check if it's text/markdown with endpoints
-        const col = parseDocToCollection(text, file.name);
-        if (col.children.length > 0) {
-          patchData((prev) => ({ ...prev, collections: [...prev.collections, col] }));
-          flashImport(`Imported collection "${col.name}" with ${col.children.length} endpoint(s)`);
-          return;
-        }
-        throw new Error("Invalid JSON and no API endpoints detected.");
-      }
-
-      const looksEnv =
-        preferEnv ||
-        /environment|globals/i.test(file.name) ||
-        (json &&
-          typeof json === "object" &&
-          ("values" in (json as object) || "_postman_variable_scope" in (json as object)) &&
-          !("item" in (json as object)));
-      const result = importPostmanFile(json);
-      if (result.kind === "environment" && result.environment) {
-        const env = result.environment;
-        patchData((prev) => ({
-          ...prev,
-          environments: [...prev.environments, env],
-          activeEnvId: env.id,
-        }));
-        flashImport(`Imported environment "${env.name}"`);
-        return;
-      }
-      if (looksEnv && result.kind === "collection") {
-        throw new Error("This file looks like an environment but could not be parsed as one.");
-      }
-      if (result.collection) {
-        const col = result.collection;
-        patchData((prev) => ({ ...prev, collections: [...prev.collections, col] }));
-        flashImport(`Imported collection "${col.name}"`);
-      }
+      patchData((prev) => ({
+        ...prev,
+        environments: [...prev.environments, ...environments],
+        activeEnvId: environments[0].id,
+      }));
+      flashImport(environments.length === 1
+        ? `Imported environment "${environments[0].name}"`
+        : `Imported ${environments.length} environments`);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Import failed");
     }
@@ -1514,7 +1493,9 @@ export default function App() {
           )}
         </div>
         <div className="top-actions">
-          {importNotice && <span className="toast">{importNotice}</span>}
+          {workspaceSaveError ? (
+            <span className="toast" role="alert">Could not save workspace changes.</span>
+          ) : importNotice && <span className="toast">{importNotice}</span>}
 
           {/* Unified Import Dropdown */}
           <div className="top-dropdown-wrapper" ref={importDropdownRef}>
@@ -1784,6 +1765,8 @@ export default function App() {
           onRenameCollection={renameCollection}
           onDeleteCollection={deleteCollection}
           onExportCollection={exportCol}
+          onExportAllCollections={exportAllCollections}
+          onExportAllEnvironments={exportAllEnvironments}
           onDuplicateCollection={duplicateCol}
           onRunCollection={(id) => {
             const col = data.collections.find((c) => c.id === id);
@@ -2152,6 +2135,14 @@ export default function App() {
           activeEnvId={data.activeEnvId}
           env={activeEnv}
           onSelectEnv={(id) => patchData({ activeEnvId: id })}
+          onResult={(result) => patchData((prev) => ({
+            ...prev,
+            history: pushHistory(prev.history, {
+              ...result,
+              id: uid("hist"),
+              timestamp: Date.now(),
+            }),
+          }))}
           onClose={() => setRunnerCol(null)}
         />
       )}
@@ -2173,7 +2164,8 @@ export default function App() {
           targetVarKey={editTargetVarKey}
           onChange={(environments) => patchData({ environments })}
           onActive={(activeEnvId) => patchData({ activeEnvId })}
-          onImportEnv={(file) => void importFile(file, true)}
+          onImportEnv={(file) => void importEnvironmentFile(file)}
+          onExportAllEnvironments={exportAllEnvironments}
           onClose={() => {
             setEnvOpen(false);
             setEditTargetEnvId(null);
@@ -2265,6 +2257,23 @@ export default function App() {
           onClose={() => {
             setImportOpen(false);
             setImportInitialFiles(null);
+          }}
+        />
+      )}
+      {createItem && (
+        <CreateItemModal
+          kind={createItem.kind}
+          collections={createItem.kind === "folder" && !createItem.collectionId ? data.collections : undefined}
+          onClose={() => setCreateItem(null)}
+          onCreate={(name, selectedCollectionId) => {
+            if (createItem.kind === "folder") {
+              saveNewFolder(name, createItem.collectionId || selectedCollectionId, createItem.folderId);
+            } else if (createItem.kind === "environment") {
+              saveNewEnvironment(name);
+            } else {
+              saveNewCollection(name);
+            }
+            setCreateItem(null);
           }}
         />
       )}

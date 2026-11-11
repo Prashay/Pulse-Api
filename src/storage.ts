@@ -284,46 +284,42 @@ export function defaultData(): AppData {
   };
 }
 
-export function loadData(): AppData {
-  try {
-    const raw =
-      localStorage.getItem(KEY) ||
-      localStorage.getItem("forge-api-studio-v2") ||
-      localStorage.getItem("forge-api-studio-v1");
-    if (!raw) return defaultData();
-    const parsed = JSON.parse(raw) as Partial<AppData>;
-
-    let collections: Collection[] = Array.isArray(parsed.collections) ? parsed.collections : [];
-    let environments: Environment[] = Array.isArray(parsed.environments) ? parsed.environments : [];
-
-    // If no collections or environments are in storage, seed with default sample test collections & envs
-    if (collections.length === 0) {
-      collections = createSampleCollections();
-    }
-    if (environments.length === 0) {
-      environments = createSampleEnvironments();
-    }
-
-    const activeEnvId =
-      parsed.activeEnvId && environments.some((e) => e.id === parsed.activeEnvId)
-        ? parsed.activeEnvId
-        : environments[0]?.id ?? null;
-
-    const history: HistoryEntry[] = Array.isArray(parsed.history)
-      ? parsed.history.slice(0, 80)
-      : [];
-
-    const result: AppData = {
-      collections,
-      environments,
-      activeEnvId,
-      history,
-    };
-
-    return result;
-  } catch {
-    return defaultData();
+function parseWorkspace(raw: string): AppData {
+  const parsed = JSON.parse(raw) as Partial<AppData> | null;
+  if (!parsed || (!Array.isArray(parsed.collections) && !Array.isArray(parsed.environments))) {
+    throw new Error("Invalid workspace data.");
   }
+  const collections = Array.isArray(parsed.collections) ? parsed.collections : [];
+  const environments = Array.isArray(parsed.environments) ? parsed.environments : [];
+  const activeEnvId =
+    parsed.activeEnvId === null || environments.some((env) => env.id === parsed.activeEnvId)
+      ? parsed.activeEnvId ?? null
+      : environments[0]?.id ?? null;
+
+  return {
+    collections,
+    environments,
+    activeEnvId,
+    history: Array.isArray(parsed.history) ? parsed.history.slice(0, 80) : [],
+  };
+}
+
+export function loadData(): AppData {
+  const desktopWorkspace = window.pulseDesktop?.readWorkspace?.();
+  if (desktopWorkspace != null) return parseWorkspace(desktopWorkspace);
+
+  let foundUnreadableWorkspace = false;
+  for (const key of [KEY, "forge-api-studio-v2", "forge-api-studio-v1"]) {
+    const legacyWorkspace = localStorage.getItem(key);
+    if (legacyWorkspace === null) continue;
+    try {
+      return parseWorkspace(legacyWorkspace);
+    } catch {
+      foundUnreadableWorkspace = true;
+    }
+  }
+  if (foundUnreadableWorkspace) throw new Error("Invalid workspace data.");
+  return defaultData();
 }
 
 export function saveData(data: AppData): void {
@@ -331,7 +327,12 @@ export function saveData(data: AppData): void {
     ...data,
     history: data.history.slice(0, 80),
   };
-  localStorage.setItem(KEY, JSON.stringify(trimmed));
+  const raw = JSON.stringify(trimmed);
+  if (window.pulseDesktop?.writeWorkspace) {
+    window.pulseDesktop.writeWorkspace(raw);
+  } else {
+    localStorage.setItem(KEY, raw);
+  }
 }
 
 export function pushHistory(

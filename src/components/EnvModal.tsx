@@ -12,6 +12,7 @@ interface Props {
   onChange: (envs: Environment[]) => void;
   onActive: (id: string | null) => void;
   onImportEnv: (file: File) => void;
+  onExportAllEnvironments: () => void;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export function EnvModal({
   onChange,
   onActive,
   onImportEnv,
+  onExportAllEnvironments,
   onClose,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -100,10 +102,15 @@ export function EnvModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Environments</h2>
+        <div className="section-header-row">
+          <h2>Environments</h2>
+          <button className="btn sm" disabled={environments.length === 0} onClick={onExportAllEnvironments}>
+            Export All Environments
+          </button>
+        </div>
         <p className="muted">
           Use {"{{variable}}"} in URLs, headers, params, body, and auth. Active environment is applied when sending.
-          Import a Postman Environment JSON (`*_environment.json` or globals).
+          Import a Postman environment JSON or a Pulse environment export bundle.
         </p>
         {environments.map((env) => (
           <div

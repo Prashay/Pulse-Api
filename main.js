@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain } from "electron";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import fs from "fs";
 
 // Resolve __dirname in ES module
@@ -28,6 +28,8 @@ try {
 } catch {
   // Use fallback title
 }
+
+if (!app.requestSingleInstanceLock()) app.exit(0);
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -321,6 +323,53 @@ try {
 }
 
 let mainWindow = null;
+let workspaceRendererUrl;
+
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
+
+// Keep workspace data in the Electron profile, independent of the build and renderer URL.
+const workspaceDirectory = path.join(app.getPath("userData"), "workspace");
+const workspaceFile = path.join(workspaceDirectory, "data.json");
+
+function handleWorkspaceRequest(channel, action) {
+  ipcMain.on(channel, (event, ...args) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      event.senderFrame !== event.sender.mainFrame ||
+      event.senderFrame?.url.split("#")[0] !== workspaceRendererUrl
+    ) {
+      event.returnValue = { ok: false, error: "Workspace access denied." };
+      return;
+    }
+    try {
+      event.returnValue = { ok: true, data: action(...args) };
+    } catch (error) {
+      console.error(`Workspace operation failed (${channel}): ${error.code || error.name}`);
+      event.returnValue = { ok: false, error: "Could not access the saved workspace." };
+    }
+  });
+}
+
+handleWorkspaceRequest("pulse:read-workspace", () => {
+  try {
+    return fs.readFileSync(workspaceFile, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+});
+
+handleWorkspaceRequest("pulse:write-workspace", (data) => {
+  if (typeof data !== "string") throw new TypeError("Expected serialized workspace data.");
+  fs.mkdirSync(workspaceDirectory, { recursive: true });
+  const temporaryFile = path.join(workspaceDirectory, "data.tmp");
+  fs.writeFileSync(temporaryFile, data, { mode: 0o600 });
+  fs.renameSync(temporaryFile, workspaceFile);
+});
 
 function createWindow() {
   const iconPath = path.join(__dirname, "public", "icon.png");
@@ -356,13 +405,11 @@ function createWindow() {
   });
 
   const distIndex = path.join(__dirname, "dist", "index.html");
-  if (process.env.ELECTRON_START_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_START_URL);
-  } else if (fs.existsSync(distIndex)) {
-    mainWindow.loadFile(distIndex);
-  } else {
-    mainWindow.loadURL("http://localhost:5173");
-  }
+  workspaceRendererUrl = new URL(
+    process.env.ELECTRON_START_URL ||
+    (fs.existsSync(distIndex) ? pathToFileURL(distIndex).href : "http://localhost:5173")
+  ).href.split("#")[0];
+  mainWindow.loadURL(workspaceRendererUrl);
 
   mainWindow.on("closed", () => {
     mainWindow = null;

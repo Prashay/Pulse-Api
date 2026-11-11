@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Collection, Environment, RunResult } from "../types";
+import type { Collection, Environment, HistoryEntry, RunResult } from "../types";
 import { METHOD_COLORS } from "../types";
 import { collectRequests, formatBytes, interpolate, prettyBody, sendRequest } from "../request";
 import { downloadJson } from "../importExport";
@@ -10,6 +10,7 @@ interface Props {
   env?: Environment | null;
   activeEnvId?: string | null;
   onSelectEnv?: (id: string | null) => void;
+  onResult: (result: Omit<HistoryEntry, "id" | "timestamp">) => void;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ export function RunnerModal({
   env,
   activeEnvId,
   onSelectEnv,
+  onResult,
   onClose,
 }: Props) {
   const requests = useMemo(() => collectRequests(collection.children), [collection.children]);
@@ -93,6 +95,8 @@ export function RunnerModal({
           body: err instanceof Error ? err.message : String(err),
         });
       }
+      const { status, time, ok, error } = acc[acc.length - 1];
+      onResult({ requestId: req.id, method: req.method, url: req.url, status, time, ok, error });
       setResults([...acc]);
       if (delay > 0) await sleep(delay);
     }

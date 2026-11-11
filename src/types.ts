@@ -98,6 +98,7 @@ export interface TabState {
 
 export interface HistoryEntry {
   id: string;
+  requestId?: string | null;
   timestamp: number;
   method: HttpMethod;
   url: string;
@@ -262,6 +263,8 @@ declare global {
     pulseDesktop?: {
       isDesktop: boolean;
       platform: string;
+      readWorkspace?: () => string | null;
+      writeWorkspace?: (data: string) => void;
       proxyRequest: (payload: {
         method: string;
         url: string;

@@ -65,9 +65,10 @@ function urlFromPostman(raw: unknown): { url: string; params: KeyValue[] } {
   const obj = raw as Record<string, unknown>;
   const rawUrl = asString(obj.raw);
   const params = fromPostmanKv(obj.query);
+  if (typeof obj["x-pulse-url"] === "string") return { url: obj["x-pulse-url"], params };
   if (rawUrl) {
     const q = rawUrl.indexOf("?");
-    return { url: q >= 0 ? rawUrl.slice(0, q) : rawUrl, params };
+    return { url: q >= 0 && params.length > 0 ? rawUrl.slice(0, q) : rawUrl, params };
   }
   const host = Array.isArray(obj.host) ? obj.host.join(".") : asString(obj.host);
   const path = Array.isArray(obj.path) ? "/" + obj.path.join("/") : asString(obj.path);
@@ -321,6 +322,25 @@ export function importPostmanFile(json: unknown, fallbackName?: string): ImportR
   throw new Error(
     "Unrecognized file. Export a Postman Collection v2.1 or Environment (.json)."
   );
+}
+
+export function parseImportJson(json: unknown, fallbackName?: string) {
+  const collections: Collection[] = [];
+  const environments: Environment[] = [];
+  const errors: string[] = [];
+  const items = Array.isArray(json) ? json : [json];
+
+  for (const item of items) {
+    try {
+      const result = importPostmanFile(item, fallbackName);
+      if (result.collection) collections.push(result.collection);
+      if (result.environment) environments.push(result.environment);
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : "Not recognized");
+    }
+  }
+
+  return { collections, environments, errors };
 }
 
 export async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
@@ -641,21 +661,10 @@ export async function parseImportFiles(files: FileList | File[]): Promise<{
         throw new Error("Invalid JSON format and no API endpoints detected.");
       }
 
-      const items = Array.isArray(json) ? json : [json];
-      for (const item of items) {
-        try {
-          const res = importPostmanFile(item, baseName);
-          if (res.kind === "collection" && res.collection) {
-            collections.push(res.collection);
-          } else if (res.kind === "environment" && res.environment) {
-            environments.push(res.environment);
-          }
-        } catch (innerErr) {
-          errors.push(
-            `${file.name}: ${innerErr instanceof Error ? innerErr.message : "Not recognized"}`
-          );
-        }
-      }
+      const result = parseImportJson(json, baseName);
+      collections.push(...result.collections);
+      environments.push(...result.environments);
+      errors.push(...result.errors.map((error) => `${file.name}: ${error}`));
     } catch (err) {
       errors.push(`${file.name}: ${err instanceof Error ? err.message : "Invalid JSON"}`);
     }
@@ -683,7 +692,7 @@ function toPostmanKv(rows: KeyValue[]) {
   return rows.map((r) => ({
     key: r.key,
     value: r.value,
-    disabled: !r.enabled,
+    disabled: r.enabled === false,
     type: "text",
   }));
 }
@@ -712,9 +721,20 @@ function toPostmanAuth(auth: AuthConfig) {
   };
 }
 
+function toPostmanEvents({ preScript, postScript }: { preScript?: string; postScript?: string }) {
+  return [
+    { listen: "prerequest", code: preScript },
+    { listen: "test", code: postScript },
+  ].flatMap(({ listen, code }) =>
+    code?.trim() ? [{ listen, script: { type: "text/javascript", exec: code.split("\n") } }] : []
+  );
+}
+
 function toPostmanItem(node: TreeNode): Record<string, unknown> {
+  const events = toPostmanEvents(node);
+  const event = events.length > 0 ? events : undefined;
   if (node.type === "folder") {
-    return { name: node.name, item: node.children.map(toPostmanItem) };
+    return { name: node.name, item: node.children.map(toPostmanItem), event };
   }
   const query = toPostmanKv(node.params);
   let body: Record<string, unknown> | undefined;
@@ -742,67 +762,27 @@ function toPostmanItem(node: TreeNode): Record<string, unknown> {
         }),
     };
   }
-  const events: Record<string, unknown>[] = [];
-  if (node.preScript && node.preScript.trim()) {
-    events.push({
-      listen: "prerequest",
-      script: {
-        type: "text/javascript",
-        exec: node.preScript.split("\n"),
-      },
-    });
-  }
-  if (node.postScript && node.postScript.trim()) {
-    events.push({
-      listen: "test",
-      script: {
-        type: "text/javascript",
-        exec: node.postScript.split("\n"),
-      },
-    });
-  }
-
-  const reqItem: Record<string, unknown> = {
+  return {
     name: node.name,
+    event,
     request: {
       method: node.method,
       header: toPostmanKv(node.headers),
       url: {
         raw: node.url,
         query,
+        // Pulse keeps inline query text separate from rows added in the Params tab.
+        "x-pulse-url": query.length > 0 && node.url.includes("?") ? node.url : undefined,
       },
       body,
       auth: toPostmanAuth(node.auth),
     },
   };
-  if (events.length > 0) {
-    reqItem.event = events;
-  }
-  return reqItem;
 }
 
 export function exportPostmanCollection(col: Collection): unknown {
-  const colEvents: Record<string, unknown>[] = [];
-  if (col.preScript && col.preScript.trim()) {
-    colEvents.push({
-      listen: "prerequest",
-      script: {
-        type: "text/javascript",
-        exec: col.preScript.split("\n"),
-      },
-    });
-  }
-  if (col.postScript && col.postScript.trim()) {
-    colEvents.push({
-      listen: "test",
-      script: {
-        type: "text/javascript",
-        exec: col.postScript.split("\n"),
-      },
-    });
-  }
-
-  const colItem: Record<string, unknown> = {
+  const events = toPostmanEvents(col);
+  return {
     info: {
       _postman_id: col.id,
       name: col.name,
@@ -810,11 +790,9 @@ export function exportPostmanCollection(col: Collection): unknown {
       schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     },
     item: col.children.map(toPostmanItem),
+    variable: col.variables?.map(({ key, value, enabled }) => ({ key, value, disabled: enabled === false })),
+    event: events.length > 0 ? events : undefined,
   };
-  if (colEvents.length > 0) {
-    colItem.event = colEvents;
-  }
-  return colItem;
 }
 
 export function downloadJson(filename: string, data: unknown): void {

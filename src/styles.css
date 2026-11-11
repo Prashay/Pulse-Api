@@ -739,10 +739,15 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   transition: all 0.15s ease;
 }
 
-.header-action-btn:hover {
+.header-action-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--accent);
   border-color: var(--border-soft);
+}
+
+.header-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .section-count {
@@ -2642,6 +2647,8 @@ mark.resp-match-subtle {
 }
 .modal h2 { margin: 0 0 12px; font-size: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.create-item-modal { width: min(420px, 92vw); }
+.create-item-modal label { display: grid; gap: 5px; margin-top: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; }
 .field input, .field textarea, .field select {
   background: var(--bg);
@@ -4010,6 +4017,8 @@ mark.resp-match-subtle {
 
 .req-pill {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 6px;
   background: var(--bg);
@@ -4032,6 +4041,46 @@ mark.resp-match-subtle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.request-latency {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.request-latency.fast { color: var(--ok); }
+.request-latency.moderate { color: var(--warn); }
+.request-latency.slow { color: var(--err); }
+.request-latency-track {
+  width: 32px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+.request-latency-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+}
+.more-api-requests { flex-basis: 100%; }
+.more-api-requests > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.more-api-requests > .col-request-pills {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 /* Mock playground */
@@ -4141,11 +4190,6 @@ mark.resp-match-subtle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.hist-time {
-  color: var(--text-mute);
-  font-size: 10px;
 }
 
 .empty-dash {

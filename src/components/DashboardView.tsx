@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Collection, Environment, HistoryEntry } from "../types";
+import type { Collection, Environment, HistoryEntry, RequestItem } from "../types";
 import { METHOD_COLORS } from "../types";
 import { collectRequests, getProxyBaseUrl } from "../request";
 
@@ -18,6 +18,27 @@ interface Props {
   onSwitchToStudio: () => void;
   onLoadSamples?: () => void;
   onOpenDownload?: () => void;
+}
+
+function latencyKey({ requestId, method, url }: Pick<HistoryEntry, "requestId" | "method" | "url">) {
+  return JSON.stringify([requestId ?? null, method, url]);
+}
+
+function RequestLatency({ run }: { run?: HistoryEntry }) {
+  if (!run) return <span className="request-latency muted">Not run</span>;
+  if (!run.status) return <span className="request-latency muted">No response</span>;
+
+  const latency = run.time;
+  const band = latency < 300 ? "fast" : latency <= 1200 ? "moderate" : "slow";
+  const fill = Math.min(100, Math.max(8, latency / 12));
+  return (
+    <span className={`request-latency ${band}`} title={`Latest response: ${latency} ms (${band})`}>
+      <span className="request-latency-track" aria-hidden="true">
+        <span style={{ width: `${fill}%` }} />
+      </span>
+      <span>{latency} ms</span>
+    </span>
+  );
 }
 
 export function DashboardView({
@@ -57,6 +78,33 @@ export function DashboardView({
 
   const passedTests = useMemo(() => history.filter((h) => h.ok).length, [history]);
   const failedTests = useMemo(() => history.filter((h) => !h.ok).length, [history]);
+  const latestRuns = useMemo(() => {
+    const runs = new Map<string, HistoryEntry>();
+    for (const entry of history) {
+      if (entry.requestId === null) continue;
+      const key = latencyKey(entry);
+      if (!runs.has(key)) runs.set(key, entry);
+    }
+    return runs;
+  }, [history]);
+
+  const renderRequest = (collectionId: string, request: RequestItem) => {
+    const run = latestRuns.get(latencyKey({ ...request, requestId: request.id }))
+      ?? latestRuns.get(latencyKey(request));
+    return (
+      <button
+        key={request.id}
+        type="button"
+        className="req-pill"
+        onClick={() => onOpenRequest(collectionId, request.id)}
+        title={`Open ${request.name} in studio`}
+      >
+        <span className={`method ${METHOD_COLORS[request.method]}`}>{request.method}</span>
+        <span className="pill-name">{request.name}</span>
+        <RequestLatency run={run} />
+      </button>
+    );
+  };
   const successRate = history.length
     ? Math.round((passedTests / history.length) * 100)
     : 100;
@@ -292,7 +340,7 @@ export function DashboardView({
               <div>
                 <h3 className="dash-card-title">Test Collections & Suites</h3>
                 <div className="dash-card-subtitle">
-                  Import Postman JSON, README.md, or doc files to automatically generate and execute API suites.
+                  Latest response per API · Green &lt;300 ms · Yellow 300–1,200 ms · Red &gt;1,200 ms
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
@@ -359,21 +407,14 @@ export function DashboardView({
 
                       {/* Request previews */}
                       <div className="col-request-pills">
-                        {reqs.slice(0, 5).map((r) => (
-                          <div
-                            key={r.id}
-                            className="req-pill"
-                            onClick={() => onOpenRequest(col.id, r.id)}
-                            title={`Open ${r.name} in studio`}
-                          >
-                            <span className={`method ${METHOD_COLORS[r.method]}`}>{r.method}</span>
-                            <span className="pill-name">{r.name}</span>
-                          </div>
-                        ))}
+                        {reqs.slice(0, 5).map((r) => renderRequest(col.id, r))}
                         {reqs.length > 5 && (
-                          <span className="muted" style={{ alignSelf: "center", fontSize: 11 }}>
-                            +{reqs.length - 5} more
-                          </span>
+                          <details className="more-api-requests">
+                            <summary>Show {reqs.length - 5} more</summary>
+                            <div className="col-request-pills">
+                              {reqs.slice(5).map((r) => renderRequest(col.id, r))}
+                            </div>
+                          </details>
                         )}
                       </div>
                     </div>
@@ -520,7 +561,7 @@ export function DashboardView({
                     >
                       {h.status || "ERR"}
                     </span>
-                    <span className="hist-time">{h.time}ms</span>
+                    <RequestLatency run={h} />
                   </div>
                 ))
               )}

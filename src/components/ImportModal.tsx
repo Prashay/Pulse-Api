@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Collection, Environment } from "../types";
-import { parseImportFiles, importPostmanFile, parseDocToCollection } from "../importExport";
+import { parseImportFiles, parseImportJson, parseDocToCollection } from "../importExport";
 import { collectFolders } from "../tree";
 
 export interface ImportResult {
@@ -93,17 +93,11 @@ export function ImportModal({ existingCollections = [], initialFiles, onImportSu
     const trimmed = rawText.trim();
     try {
       if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-        const parsed = JSON.parse(trimmed);
-        const res = importPostmanFile(parsed, rawName.trim() || undefined);
-        const cols: Collection[] = res.collection ? [res.collection] : [];
-        const envs: Environment[] = res.environment ? [res.environment] : [];
-        setPreview({
-          collections: cols,
-          environments: envs,
-          errors: [],
-          sourceLabel: "Pasted JSON Content",
-        });
-        return;
+        const result = parseImportJson(JSON.parse(trimmed), rawName.trim() || undefined);
+        if (result.collections.length > 0 || result.environments.length > 0) {
+          setPreview({ ...result, sourceLabel: "Pasted JSON Content" });
+          return;
+        }
       }
     } catch {
       // Fallback to markdown/documentation parser below
@@ -208,7 +202,7 @@ export function ImportModal({ existingCollections = [], initialFiles, onImportSu
           </button>
         </div>
         <div className="muted" style={{ marginTop: 4, marginBottom: 14 }}>
-          Import Postman collections (v2.1), environments, globals, OpenAPI, or API documentation (Markdown, Word .docx, .txt).
+          Import Pulse export bundles, Postman collections (v2.1), environments, globals, OpenAPI, or API documentation (Markdown, Word .docx, .txt).
         </div>
 
         {/* Tab selection */}

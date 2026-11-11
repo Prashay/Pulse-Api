@@ -18,6 +18,8 @@ interface Props {
   onRenameCollection: (id: string, newName?: string) => void;
   onDeleteCollection: (id: string) => void;
   onExportCollection: (id: string) => void;
+  onExportAllCollections: () => void;
+  onExportAllEnvironments: () => void;
   onDuplicateCollection?: (id: string) => void;
   onRunCollection: (id: string) => void;
   onRenameNode: (id: string, newName?: string) => void;
@@ -58,6 +60,16 @@ function Chevron({ open }: { open: boolean }) {
     >
       <polyline points="9 18 15 12 9 6" />
     </svg>
+  );
+}
+
+function ExportAllButton({ label, disabled, onClick }: { label: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="header-action-btn" title={label} aria-label={label} disabled={disabled} onClick={onClick}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4" />
+      </svg>
+    </button>
   );
 }
 
@@ -132,25 +144,7 @@ export function Sidebar(props: Props) {
   const plusWrapperRef = useRef<HTMLDivElement>(null);
   const plusSearchInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAddFolderPrompt = () => {
-    if (props.collections.length === 0) {
-      props.onNewFolder("", null);
-      return;
-    }
-    if (props.collections.length === 1) {
-      props.onNewFolder(props.collections[0].id, null);
-      return;
-    }
-    const colList = props.collections.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-    const choice = window.prompt(
-      `Add folder to which collection?\n${colList}\n\nEnter number (1-${props.collections.length}):`,
-      "1"
-    );
-    if (!choice) return;
-    const idx = parseInt(choice, 10) - 1;
-    const targetCol = props.collections[idx] || props.collections[0];
-    props.onNewFolder(targetCol.id, null);
-  };
+  const addCollectionFolder = () => props.onNewFolder("", null);
 
   useEffect(() => {
     if (!plusMenuOpen) return;
@@ -245,7 +239,7 @@ export function Sidebar(props: Props) {
         badgeClass: "badge-folder",
         action: () => {
           setPlusMenuOpen(false);
-          handleAddFolderPrompt();
+          addCollectionFolder();
         },
       },
       {
@@ -483,6 +477,11 @@ export function Sidebar(props: Props) {
             <span className="section-count">{props.collections.length}</span>
           </button>
           <div className="section-header-actions">
+            <ExportAllButton
+              label="Export All Collections"
+              disabled={props.collections.length === 0}
+              onClick={props.onExportAllCollections}
+            />
             <button
               className={`header-action-btn col-sort-btn ${colSortOrder !== "default" ? "active" : ""}`}
               title={`Sort Collections: ${colSortOrder === "asc" ? "A to Z (Click for Z-A)" : colSortOrder === "desc" ? "Z to A (Click to Reset)" : "Default (Click to Sort A-Z)"}`}
@@ -522,7 +521,7 @@ export function Sidebar(props: Props) {
               title="Add New Collection Folder (+Folder)"
               onClick={(e) => {
                 e.stopPropagation();
-                handleAddFolderPrompt();
+                addCollectionFolder();
               }}
               aria-label="Add Collection Folder"
             >
@@ -556,7 +555,7 @@ export function Sidebar(props: Props) {
                 <div>No collections yet</div>
                 <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "center" }}>
                   <button className="btn sm primary" onClick={props.onNewCollection}>+ Collection</button>
-                  <button className="btn sm" onClick={handleAddFolderPrompt}>+ Folder</button>
+                  <button className="btn sm" onClick={addCollectionFolder}>+ Folder</button>
                 </div>
               </div>
             )}
@@ -715,6 +714,11 @@ export function Sidebar(props: Props) {
             <span className="chev"><Chevron open={envOpen} /></span>
             ENVIRONMENTS
           </button>
+          <ExportAllButton
+            label="Export All Environments"
+            disabled={props.environments.length === 0}
+            onClick={props.onExportAllEnvironments}
+          />
           <button
             className="icon-btn"
             title="Create new environment"
