@@ -336,7 +336,7 @@ export function Sidebar(props: Props) {
   }, [props.collections, query, colSortOrder]);
 
   return (
-    <aside className={`sidebar ${props.mobileOpen ? "mobile-open" : ""}`} onClick={() => setMenu(null)}>
+    <aside id="app-sidebar" className={`sidebar ${props.mobileOpen ? "mobile-open" : ""}`} onClick={() => setMenu(null)}>
       {props.onCloseMobile && (
         <div className="mobile-sidebar-header">
           <div className="mobile-sidebar-title">

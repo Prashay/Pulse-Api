@@ -265,6 +265,10 @@ declare global {
       platform: string;
       readWorkspace?: () => string | null;
       writeWorkspace?: (data: string) => void;
+      windowZoom?: {
+        getFactor: () => number;
+        setFactor: (factor: number) => void;
+      };
       proxyRequest: (payload: {
         method: string;
         url: string;

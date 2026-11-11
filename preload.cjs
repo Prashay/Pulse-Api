@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 function workspaceRequest(channel, ...args) {
   const result = ipcRenderer.sendSync(channel, ...args);
@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("pulseDesktop", {
   platform: process.platform,
   readWorkspace: () => workspaceRequest("pulse:read-workspace"),
   writeWorkspace: (data) => workspaceRequest("pulse:write-workspace", data),
+  windowZoom: {
+    getFactor: () => webFrame.getZoomFactor(),
+    setFactor: (factor) => {
+      if (Number.isFinite(factor)) webFrame.setZoomFactor(Math.max(0.5, Math.min(2, factor)));
+    },
+  },
   proxyRequest: (payload) => ipcRenderer.invoke("pulse:proxy-request", payload),
   checkHealth: () => ipcRenderer.invoke("pulse:health-check"),
 });

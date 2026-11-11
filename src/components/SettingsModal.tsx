@@ -399,7 +399,7 @@ export const SettingsModal: FC<Props> = ({
               <div className="settings-label-row">
                 <div>
                   <span className="settings-title">Application Font Size</span>
-                  <div className="settings-subtitle">Pinch on the touchpad to adjust UI and editor text together</div>
+                  <div className="settings-subtitle">Set the base size for app text</div>
                 </div>
                 <span className="settings-badge">{localSettings.fontSize}px</span>
               </div>

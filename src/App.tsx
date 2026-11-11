@@ -58,8 +58,6 @@ import {
   type PanelLayoutMode,
   FONT_FAMILY_PRESETS,
   CODE_FONT_PRESETS,
-  UI_FONT_SIZE,
-  CODE_FONT_SIZE,
 } from "./components/SettingsModal";
 import { toCurl } from "./curl";
 
@@ -118,23 +116,22 @@ export default function App({ initialData }: { initialData: AppData }) {
     localStorage.setItem("pulse_view_mode", mode);
   };
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [isSmallScreen, setIsSmallScreen] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth <= 960 : false
-  );
+  const [isSmallScreen, setIsSmallScreen] = useState(() => window.matchMedia("(max-width: 960px)").matches);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("pulse_sidebar_collapsed") === "true";
   });
 
   useEffect(() => {
-    const handleResize = () => {
-      const small = window.innerWidth <= 960;
-      setIsSmallScreen(small);
-      if (!small) {
+    const breakpoint = window.matchMedia("(max-width: 960px)");
+    const updateLayout = () => {
+      setIsSmallScreen(breakpoint.matches);
+      if (!breakpoint.matches) {
         setMobileSidebarOpen(false);
       }
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    updateLayout();
+    breakpoint.addEventListener("change", updateLayout);
+    return () => breakpoint.removeEventListener("change", updateLayout);
   }, []);
 
   const toggleSidebar = () => {
@@ -489,6 +486,9 @@ export default function App({ initialData }: { initialData: AppData }) {
   }, [fontSettings]);
 
   useEffect(() => {
+    const zoom = window.pulseDesktop?.windowZoom;
+    if (!zoom) return;
+
     const stepThreshold = 16;
     let pendingDelta = 0;
     let lastWheelTime = 0;
@@ -509,12 +509,8 @@ export default function App({ initialData }: { initialData: AppData }) {
 
       const step = -Math.sign(pendingDelta);
       pendingDelta = 0;
-      setFontSettings((prev) => {
-        const fontSize = Math.max(UI_FONT_SIZE.min, Math.min(UI_FONT_SIZE.max, prev.fontSize + step));
-        const codeFontSize = Math.max(CODE_FONT_SIZE.min, Math.min(CODE_FONT_SIZE.max, prev.codeFontSize + step));
-        if (fontSize === prev.fontSize && codeFontSize === prev.codeFontSize) return prev;
-        return { ...prev, fontSize, codeFontSize };
-      });
+      const factor = Math.round(zoom.getFactor() * 100 + step * 10) / 100;
+      zoom.setFactor(factor);
     };
 
     window.addEventListener("wheel", onPinch, { capture: true, passive: false });
@@ -1362,6 +1358,8 @@ export default function App({ initialData }: { initialData: AppData }) {
               : `Toggle Sidebar (${typeof navigator !== "undefined" && navigator.platform?.includes("Mac") ? "⌘B" : "Ctrl+B"})`
           }
           aria-label="Toggle Sidebar"
+          aria-expanded={isSmallScreen ? mobileSidebarOpen : !sidebarCollapsed}
+          aria-controls="app-sidebar"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
