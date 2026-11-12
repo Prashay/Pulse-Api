@@ -51,22 +51,22 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: "light",
-    name: "Crisp Clean",
-    badge: "BRUNO LIGHT",
-    desc: "Bright daylight layout with high-contrast text, slate borders, and crisp blue accents",
-    bg: "#f8fafc",
+    name: "Apple Light",
+    badge: "LIGHT",
+    desc: "White surfaces, soft gray panels, and Apple blue controls",
+    bg: "#f5f5f7",
     sidebarBg: "#ffffff",
     cardBg: "#ffffff",
-    accent: "#2563eb",
-    textColor: "#0f172a",
-    textMute: "#64748b",
+    accent: "#0071e3",
+    textColor: "#1d1d1f",
+    textMute: "#646469",
   },
 ];
 
 export const FONT_FAMILY_PRESETS = [
   {
     id: "sans",
-    name: "Plus Jakarta Sans & Inter (Default — Razor Sharp UI)",
+    name: "Theme default",
     value: '"Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     sample: "Crisp, balanced high-definition UI typography",
   },
@@ -294,7 +294,7 @@ export const SettingsModal: FC<Props> = ({
                 <div>
                   <span className="settings-title">Studio Theme & Color Scheme</span>
                   <div className="settings-subtitle">
-                    Select your preferred color theme (inspired by Bruno's theme architecture)
+                    Select a theme for Studio and Dashboard
                   </div>
                 </div>
               </div>
@@ -347,7 +347,7 @@ export const SettingsModal: FC<Props> = ({
                           <div className="theme-card-preview-content">
                             <div
                               className="theme-preview-code-line"
-                              style={{ background: t.textMute, width: "75%" }}
+                              style={{ background: t.textColor, width: "75%" }}
                             />
                             <div
                               className="theme-preview-code-line"
@@ -362,7 +362,7 @@ export const SettingsModal: FC<Props> = ({
                       </div>
                       <div className="theme-card-info">
                         <div className="theme-card-title-row">
-                          <span className="theme-card-name" style={{ color: t.textColor }}>
+                          <span className="theme-card-name">
                             {t.name}
                           </span>
                           <span className="theme-card-badge">{t.badge}</span>
@@ -508,7 +508,7 @@ export const SettingsModal: FC<Props> = ({
               <div
                 className="settings-preview-body"
                 style={{
-                  fontFamily: localSettings.fontFamily,
+                  fontFamily: localSettings.fontFamily === FONT_FAMILY_PRESETS[0].value ? "var(--font)" : localSettings.fontFamily,
                   fontSize: `${localSettings.fontSize}px`,
                 }}
               >

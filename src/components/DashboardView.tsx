@@ -222,11 +222,11 @@ export function DashboardView({
             onClick={onImportClick}
             title="Import Postman Collections (.json), README.md, or API documentation (.doc, .docx, .txt)"
           >
-            <span>📁</span>
+            <span aria-hidden="true">📁</span>
             <span>Import JSON / Doc</span>
           </button>
           <button className="btn ghost dash-action-btn" onClick={() => onNewRequest()}>
-            <span>+</span>
+            <span aria-hidden="true">+</span>
             <span>New Request</span>
           </button>
           {onLoadSamples && (
@@ -235,12 +235,12 @@ export function DashboardView({
               onClick={onLoadSamples}
               title="Load pre-configured sample test collections & environments"
             >
-              <span>🧪</span>
+              <span aria-hidden="true">🧪</span>
               <span>Sample Test Suite</span>
             </button>
           )}
           <button className="btn dash-action-btn" onClick={onSwitchToStudio}>
-            <span>⚡</span>
+            <span aria-hidden="true">⚡</span>
             <span>Request Studio</span>
           </button>
           <button
@@ -250,6 +250,7 @@ export function DashboardView({
             title="Download Pulse Desktop App for macOS (.dmg, .zip) or Windows (.zip, .exe)"
           >
             <svg
+              aria-hidden="true"
               width="14"
               height="14"
               viewBox="0 0 24 24"

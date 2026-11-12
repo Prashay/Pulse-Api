@@ -455,7 +455,7 @@ export function Sidebar(props: Props) {
               margin: "2px 0 10px",
               fontWeight: 700,
               fontSize: 12,
-              color: props.viewMode === "dashboard" ? "#fff" : "var(--text-dim)",
+              color: props.viewMode === "dashboard" ? "var(--text)" : "var(--text-dim)",
               background: props.viewMode === "dashboard" ? "var(--bg-active)" : undefined,
             }}
             onClick={props.onSelectDashboard}

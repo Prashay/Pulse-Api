@@ -477,7 +477,11 @@ export default function App({ initialData }: { initialData: AppData }) {
 
   useEffect(() => {
     document.documentElement.style.setProperty("--app-font-size", `${fontSettings.fontSize}px`);
-    document.documentElement.style.setProperty("--font", fontSettings.fontFamily);
+    if (fontSettings.fontFamily === FONT_FAMILY_PRESETS[0].value) {
+      document.documentElement.style.removeProperty("--font");
+    } else {
+      document.documentElement.style.setProperty("--font", fontSettings.fontFamily);
+    }
     document.documentElement.style.setProperty("--app-code-font-size", `${fontSettings.codeFontSize}px`);
     document.documentElement.style.setProperty("--mono", fontSettings.codeFontFamily);
     localStorage.setItem("pulse_font_size", String(fontSettings.fontSize));
