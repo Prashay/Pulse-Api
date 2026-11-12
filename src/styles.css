@@ -1204,6 +1204,11 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   transform: translateY(0.5px);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
+.send-btn.danger,
+.send-btn.danger:hover {
+  background: #b91c1c;
+  box-shadow: none;
+}
 .send-btn:disabled {
   opacity: 0.55;
   cursor: wait;
@@ -4161,6 +4166,9 @@ mark.resp-match-subtle {
 
 .history-stream-row {
   display: grid;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
   grid-template-columns: 48px minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
@@ -4175,6 +4183,19 @@ mark.resp-match-subtle {
 .history-stream-row:hover {
   background: var(--bg-hover);
 }
+
+.history-response-dialog {
+  width: min(760px, 94vw);
+  margin: auto;
+  color: var(--text);
+}
+.history-response-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.history-response-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.history-response-dialog .response-pane { height: min(420px, 55vh); flex: 0 1 auto; }
+.history-response-url { overflow-wrap: anywhere; font-family: var(--mono); }
 
 .hist-url {
   color: var(--text-dim);

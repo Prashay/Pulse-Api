@@ -54,8 +54,15 @@ ipcMain.handle("pulse:health-check", async () => {
   };
 });
 
+const activeProxyRequests = new Map();
+ipcMain.on("pulse:cancel-proxy-request", (event, id) => {
+  if (typeof id === "string") {
+    activeProxyRequests.get(`${event.sender.id}:${id}`)?.abort(new Error("Request cancelled"));
+  }
+});
+
 // IPC Handler for Native Request Execution (Bypasses CORS, local ports & firewall blocks)
-ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
+ipcMain.handle("pulse:proxy-request", async (event, reqData) => {
   const started = Date.now();
   let {
     method = "GET",
@@ -63,6 +70,7 @@ ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
     headers = {},
     body,
     timeout = 0,
+    cancellationId,
   } = reqData ?? {};
 
   if (!url || typeof url !== "string") {
@@ -218,6 +226,8 @@ ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
 
   // Outbound HTTP/HTTPS request execution
   const controller = new AbortController();
+  const requestKey = typeof cancellationId === "string" ? `${event.sender.id}:${cancellationId}` : null;
+  if (requestKey) activeProxyRequests.set(requestKey, controller);
   const parsedTimeout = Math.max(0, Number(timeout) || 0);
   const timer = parsedTimeout > 0 ? setTimeout(() => controller.abort(), parsedTimeout) : null;
 
@@ -264,8 +274,6 @@ ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (timer) clearTimeout(timer);
-
     const respHeaders = {};
     response.headers.forEach((value, key) => {
       respHeaders[key] = value;
@@ -294,7 +302,6 @@ ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
       size: buffer.length,
     };
   } catch (err) {
-    if (timer) clearTimeout(timer);
     const aborted = err && err.name === "AbortError";
     const message = aborted
       ? `Request timed out after ${parsedTimeout}ms`
@@ -312,6 +319,9 @@ ipcMain.handle("pulse:proxy-request", async (_event, reqData) => {
       time: Date.now() - started,
       size: 0,
     };
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (requestKey && activeProxyRequests.get(requestKey) === controller) activeProxyRequests.delete(requestKey);
   }
 });
 

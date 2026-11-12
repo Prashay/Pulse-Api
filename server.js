@@ -171,6 +171,10 @@ app.post("/api/proxy", async (req, res) => {
   }
 
   const controller = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.once("close", onClose);
   const parsedTimeout = Math.max(0, Number(timeout) || 0);
   const timer = parsedTimeout > 0 ? setTimeout(() => controller.abort(), parsedTimeout) : null;
 
@@ -200,8 +204,6 @@ app.post("/api/proxy", async (req, res) => {
 
     const response = await fetch(url, init);
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (timer) clearTimeout(timer);
-
     const respHeaders = {};
     response.headers.forEach((value, key) => {
       respHeaders[key] = value;
@@ -230,7 +232,7 @@ app.post("/api/proxy", async (req, res) => {
       size: buffer.length,
     });
   } catch (err) {
-    if (timer) clearTimeout(timer);
+    if (res.destroyed) return;
     const aborted = err && err.name === "AbortError";
     const message = aborted
       ? `Request timed out after ${parsedTimeout}ms`
@@ -248,6 +250,9 @@ app.post("/api/proxy", async (req, res) => {
       time: Date.now() - started,
       size: 0,
     });
+  } finally {
+    if (timer) clearTimeout(timer);
+    res.off("close", onClose);
   }
 });
 

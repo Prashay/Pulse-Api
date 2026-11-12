@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Collection, Environment, HistoryEntry, RunResult } from "../types";
+import type { Collection, Environment, ProxyResponse, RequestItem, RunResult } from "../types";
 import { METHOD_COLORS } from "../types";
 import { collectRequests, formatBytes, interpolate, prettyBody, sendRequest } from "../request";
 import { downloadJson } from "../importExport";
@@ -10,7 +10,7 @@ interface Props {
   env?: Environment | null;
   activeEnvId?: string | null;
   onSelectEnv?: (id: string | null) => void;
-  onResult: (result: Omit<HistoryEntry, "id" | "timestamp">) => void;
+  onResult: (request: RequestItem, response: ProxyResponse) => void;
   onClose: () => void;
 }
 
@@ -32,7 +32,7 @@ export function RunnerModal({
   const [delay, setDelay] = useState(100);
   const [filter, setFilter] = useState<"all" | "passed" | "failed">("all");
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
-  const stopRef = useRef(false);
+  const runController = useRef<AbortController | null>(null);
 
   // Sync active environment
   const currentEnv = useMemo(() => {
@@ -44,48 +44,30 @@ export function RunnerModal({
     onSelectEnv?.(newId);
   };
 
-  useEffect(() => {
-    stopRef.current = false;
-    return () => {
-      stopRef.current = true;
-    };
-  }, []);
+  useEffect(() => () => runController.current?.abort(), []);
 
   const run = async () => {
+    if (runController.current) return;
     setRunning(true);
     setResults([]);
     setSelectedResult(null);
-    stopRef.current = false;
+    const controller = new AbortController();
+    runController.current = controller;
+    const { signal } = controller;
     const acc: RunResult[] = [];
 
     for (const req of requests) {
-      if (stopRef.current) break;
+      if (signal.aborted) break;
       const resolvedUrl = interpolate(req.url, currentEnv, collection);
+      let response: ProxyResponse;
       try {
-        const resp = await sendRequest(req, currentEnv, collection, undefined, {
+        response = await sendRequest(req, currentEnv, collection, undefined, {
           requestId: req.id,
+          signal,
         });
-        const item: RunResult = {
-          requestId: req.id,
-          name: req.name,
-          method: req.method,
-          url: resp.outbound?.url || resolvedUrl,
-          status: resp.status,
-          statusText: resp.statusText,
-          time: resp.time,
-          size: resp.size,
-          ok: resp.ok,
-          error: resp.error,
-          body: resp.body,
-          headers: resp.headers,
-        };
-        acc.push(item);
       } catch (err) {
-        acc.push({
-          requestId: req.id,
-          name: req.name,
-          method: req.method,
-          url: resolvedUrl,
+        if (signal.aborted) break;
+        response = {
           status: 0,
           statusText: "Network/Local Error",
           time: 0,
@@ -93,13 +75,20 @@ export function RunnerModal({
           ok: false,
           error: true,
           body: err instanceof Error ? err.message : String(err),
-        });
+          headers: {},
+        };
       }
-      const { status, time, ok, error } = acc[acc.length - 1];
-      onResult({ requestId: req.id, method: req.method, url: req.url, status, time, ok, error });
+      if (signal.aborted) break;
+      const { status, statusText, time, size, ok, error, body, headers } = response;
+      acc.push({
+        requestId: req.id, name: req.name, method: req.method, url: response.outbound?.url || resolvedUrl,
+        status, statusText, time, size, ok, error, body, headers,
+      });
+      onResult(req, response);
       setResults([...acc]);
-      if (delay > 0) await sleep(delay);
+      if (delay > 0) await sleep(delay, signal);
     }
+    runController.current = null;
     setRunning(false);
   };
 
@@ -214,7 +203,7 @@ export function RunnerModal({
                 className="btn danger"
                 style={{ padding: "7px 16px" }}
                 onClick={() => {
-                  stopRef.current = true;
+                  runController.current?.abort();
                 }}
               >
                 ⏹ Stop Run
@@ -518,6 +507,18 @@ export function RunnerModal({
   );
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+function sleep(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
+  });
 }

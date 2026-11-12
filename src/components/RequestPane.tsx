@@ -33,6 +33,7 @@ interface Props {
   onReqTab: (t: ReqTab) => void;
   onChange: (patch: Partial<RequestSnapshot>) => void;
   onSend: () => void;
+  onCancel: () => void;
 }
 
 export function RequestPane(props: Props) {
@@ -518,11 +519,10 @@ export function RequestPane(props: Props) {
           </button>
         ) : (
           <button
-            className="send-btn"
-            disabled={props.sending}
-            onClick={props.onSend}
+            className={`send-btn${props.sending ? " danger" : ""}`}
+            onClick={props.sending ? props.onCancel : props.onSend}
           >
-            {props.sending ? "Sending..." : "Send"}
+            {props.sending ? "Cancel" : "Send"}
           </button>
         )}
       </div>

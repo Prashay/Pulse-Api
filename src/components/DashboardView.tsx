@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Collection, Environment, HistoryEntry, RequestItem } from "../types";
 import { METHOD_COLORS } from "../types";
 import { collectRequests, getProxyBaseUrl } from "../request";
+import { ResponsePane } from "./ResponsePane";
 
 interface Props {
   collections: Collection[];
@@ -57,6 +58,14 @@ export function DashboardView({
   onLoadSamples,
   onOpenDownload,
 }: Props) {
+  const [selectedRun, setSelectedRun] = useState<HistoryEntry | null>(null);
+  const historyDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = historyDialog.current;
+    if (selectedRun && dialog && !dialog.open) dialog.showModal();
+  }, [selectedRun]);
+
   const [proxyPing, setProxyPing] = useState<{ ok: boolean; time: number } | null>(null);
   const [mockLoading, setMockLoading] = useState<string | null>(null);
   const [mockOutput, setMockOutput] = useState<{
@@ -550,7 +559,13 @@ export function DashboardView({
                 <div className="empty-dash">No requests executed yet. Run a collection to see activity!</div>
               ) : (
                 history.slice(0, 10).map((h) => (
-                  <div key={h.id} className="history-stream-row">
+                  <button
+                    key={h.id}
+                    type="button"
+                    className="history-stream-row"
+                    onClick={() => setSelectedRun(h)}
+                    title="View request result"
+                  >
                     <span className={`method ${METHOD_COLORS[h.method]}`}>{h.method}</span>
                     <span className="hist-url" title={h.url}>
                       {h.url}
@@ -562,13 +577,43 @@ export function DashboardView({
                       {h.status || "ERR"}
                     </span>
                     <RequestLatency run={h} />
-                  </div>
+                  </button>
                 ))
               )}
             </div>
           </div>
         </div>
       </div>
+
+      <dialog
+        ref={historyDialog}
+        className="modal history-response-dialog"
+        aria-labelledby="history-response-title"
+        onClose={() => setSelectedRun(null)}
+      >
+        {selectedRun && (
+          <>
+            <div className="dash-card-header">
+              <h3 id="history-response-title">Request result</h3>
+              <button className="btn sm" type="button" onClick={() => historyDialog.current?.close()}>
+                Close
+              </button>
+            </div>
+            <p className="history-response-url">{selectedRun.method} {selectedRun.url}</p>
+            {selectedRun.response ? (
+              <>
+                {selectedRun.responseTruncated && <p className="muted">Showing the first 16,000 characters saved in history.</p>}
+                <ResponsePane response={selectedRun.response} sending={false} />
+              </>
+            ) : (
+              <p className="muted">
+                {selectedRun.status ? `HTTP ${selectedRun.status}` : "No response"} · {selectedRun.time} ms.
+                Response details were not saved for this run.
+              </p>
+            )}
+          </>
+        )}
+      </dialog>
 
     </div>
   );

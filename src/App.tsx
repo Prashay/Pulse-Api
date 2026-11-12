@@ -172,6 +172,7 @@ export default function App({ initialData }: { initialData: AppData }) {
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
   const [responses, setResponses] = useState<Record<string, ProxyResponse | null>>({});
   const [sending, setSending] = useState<Record<string, boolean>>({});
+  const pendingRequests = useRef(new Map<string, AbortController>());
   const [reqTab, setReqTab] = useState<ReqTab>("params");
   const [savedLabel, setSavedLabel] = useState<string | null>(null);
   const [runnerCol, setRunnerCol] = useState<Collection | null>(null);
@@ -707,11 +708,53 @@ export default function App({ initialData }: { initialData: AppData }) {
     return null;
   };
 
+  const recordRun = (
+    requestId: string | null,
+    { method, url }: Pick<RequestSnapshot, "method" | "url">,
+    response: ProxyResponse,
+  ) => {
+    const { status, statusText, time, ok, error, headers, body, size } = response;
+    const savedBody = body.slice(0, 16_000);
+    const entry = {
+      id: uid("hist"),
+      requestId,
+      timestamp: Date.now(),
+      method,
+      url,
+      status,
+      time,
+      ok,
+      error,
+      response: { status, statusText, time, ok, error, headers, body: savedBody, size },
+      responseTruncated: savedBody.length < body.length,
+    };
+    patchData((prev) => ({ ...prev, history: pushHistory(prev.history, entry) }));
+  };
+
+  const cancelRequest = (tabId: string) => {
+    const controller = pendingRequests.current.get(tabId);
+    if (!controller) return;
+    pendingRequests.current.delete(tabId);
+    controller.abort();
+    setSending((prev) => ({ ...prev, [tabId]: false }));
+    setResponses((prev) => ({
+      ...prev,
+      [tabId]: {
+        ok: false, error: true, status: 0, statusText: "Cancelled",
+        headers: {}, body: "Request cancelled.", time: 0, size: 0,
+      },
+    }));
+  };
+
   const sendActive = async () => {
     if (!activeTab) return;
     const tabId = activeTab.id;
+    if (pendingRequests.current.has(tabId)) return;
+    const controller = new AbortController();
+    pendingRequests.current.set(tabId, controller);
     const activeCol = getActiveCollection(activeTab);
     setSending((s) => ({ ...s, [tabId]: true }));
+    let responseReceived = false;
     try {
       const handleEnvUpdate = (updatedVars: KeyValue[]) => {
         if (!activeEnv) return;
@@ -741,23 +784,13 @@ export default function App({ initialData }: { initialData: AppData }) {
         {
           requestId: activeTab.requestId,
           onCollectionUpdate: handleColUpdate,
+          signal: controller.signal,
         }
       );
+      controller.signal.throwIfAborted();
+      responseReceived = true;
       setResponses((r) => ({ ...r, [tabId]: resp }));
-      patchData((prev) => ({
-        ...prev,
-        history: pushHistory(prev.history, {
-          id: uid("hist"),
-          requestId: activeTab.requestId,
-          timestamp: Date.now(),
-          method: activeTab.draft.method,
-          url: activeTab.draft.url,
-          status: resp.status,
-          time: resp.time,
-          ok: resp.ok,
-          error: resp.error,
-        }),
-      }));
+      recordRun(activeTab.requestId, activeTab.draft, resp);
 
       // Log request & response telemetry to console with fully resolved values
       const outbound = resp.outbound || buildOutbound(activeTab.draft, activeEnv, activeCol);
@@ -779,10 +812,10 @@ export default function App({ initialData }: { initialData: AppData }) {
         curl: toCurl(activeTab.draft, activeEnv, activeCol),
       });
     } catch (err) {
+      if (controller.signal.aborted) return;
       const errMsg = err instanceof Error ? err.message : String(err);
-      setResponses((r) => ({
-        ...r,
-        [tabId]: {
+      if (!responseReceived) {
+        const failure: ProxyResponse = {
           ok: false,
           error: true,
           status: 0,
@@ -791,8 +824,10 @@ export default function App({ initialData }: { initialData: AppData }) {
           body: errMsg,
           time: 0,
           size: 0,
-        },
-      }));
+        };
+        setResponses((r) => ({ ...r, [tabId]: failure }));
+        recordRun(activeTab.requestId, activeTab.draft, failure);
+      }
       addConsoleLog({
         id: uid("clog"),
         timestamp: Date.now(),
@@ -805,7 +840,10 @@ export default function App({ initialData }: { initialData: AppData }) {
         responseBody: errMsg,
       });
     } finally {
-      setSending((s) => ({ ...s, [tabId]: false }));
+      if (pendingRequests.current.get(tabId) === controller) {
+        pendingRequests.current.delete(tabId);
+        setSending((s) => ({ ...s, [tabId]: false }));
+      }
     }
   };
 
@@ -1979,6 +2017,7 @@ export default function App({ initialData }: { initialData: AppData }) {
                       onReqTab={setReqTab}
                       onChange={onDraftChange}
                       onSend={() => void sendActive()}
+                      onCancel={() => cancelRequest(activeTab.id)}
                       envName={activeEnv?.name ?? null}
                       env={activeEnv}
                       environments={data.environments}
@@ -2133,14 +2172,7 @@ export default function App({ initialData }: { initialData: AppData }) {
           activeEnvId={data.activeEnvId}
           env={activeEnv}
           onSelectEnv={(id) => patchData({ activeEnvId: id })}
-          onResult={(result) => patchData((prev) => ({
-            ...prev,
-            history: pushHistory(prev.history, {
-              ...result,
-              id: uid("hist"),
-              timestamp: Date.now(),
-            }),
-          }))}
+          onResult={(request, response) => recordRun(request.id, request, response)}
           onClose={() => setRunnerCol(null)}
         />
       )}

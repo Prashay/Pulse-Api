@@ -350,6 +350,7 @@ export function getProxyBaseUrl(): string {
 }
 
 export interface SendRequestOptions {
+  signal?: AbortSignal;
   requestId?: string | null;
   parentFolders?: FolderItem[];
   onCollectionUpdate?: (updatedVariables: KeyValue[]) => void;
@@ -403,6 +404,8 @@ export async function sendRequest(
   onEnvUpdate?: (updatedVariables: KeyValue[]) => void,
   options?: SendRequestOptions
 ): Promise<ProxyResponse> {
+  const signal = options?.signal;
+  signal?.throwIfAborted();
   let effectiveSnap = { ...snap };
   let effectiveEnv: Environment = env
     ? { ...env, variables: [...(env.variables || [])] }
@@ -455,6 +458,7 @@ export async function sendRequest(
         effectiveCollection,
         executionVars
       );
+      signal?.throwIfAborted();
 
       // Immediately propagate updated environment variables
       if (preResult.envModified) {
@@ -491,6 +495,7 @@ export async function sendRequest(
         allScriptLogs.push(`[Pre-request (${item.source})] ${log.message}`);
       }
     } catch (err) {
+      signal?.throwIfAborted();
       allScriptLogs.push(
         `[Pre-request Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`
       );
@@ -506,19 +511,30 @@ export async function sendRequest(
 
   // Layer 1: Electron Desktop Native IPC (Zero CORS issues, zero port conflicts, offline mock support)
   if (typeof window !== "undefined" && window.pulseDesktop?.proxyRequest) {
+    const desktop = window.pulseDesktop;
+    const cancellationId = signal ? generateRandomGuid() : undefined;
+    const cancelNative = () => {
+      if (cancellationId) desktop.cancelProxyRequest?.(cancellationId);
+    };
+    signal?.addEventListener("abort", cancelNative, { once: true });
     try {
-      responseData = await window.pulseDesktop.proxyRequest({
+      responseData = await desktop.proxyRequest({
         method: outbound.method,
         url: outbound.url,
         headers: outbound.headers,
         body: outbound.body,
         timeout: requestTimeout,
+        cancellationId,
       });
     } catch (ipcErr) {
+      signal?.throwIfAborted();
       console.warn("Desktop native IPC proxy encountered error, trying HTTP proxy:", ipcErr);
       responseData = null;
+    } finally {
+      signal?.removeEventListener("abort", cancelNative);
     }
   }
+  signal?.throwIfAborted();
 
   // Layer 2: HTTP Proxy Server (/api/proxy or http://127.0.0.1:3001/api/proxy)
   if (!responseData) {
@@ -526,6 +542,7 @@ export async function sendRequest(
     try {
       const res = await fetch(proxyUrl, {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           method: outbound.method,
@@ -551,6 +568,7 @@ export async function sendRequest(
         responseData = (await res.json()) as ProxyResponse;
       }
     } catch (proxyErr) {
+      signal?.throwIfAborted();
       // Layer 3: Direct Client-Side Fetch (fallback if proxy is unreachable)
       let directTimer: any = null;
       try {
@@ -569,13 +587,12 @@ export async function sendRequest(
         const directInit: RequestInit = {
           method: outbound.method,
           headers: directHeaders,
-          signal: directController.signal,
+          signal: signal ? AbortSignal.any([signal, directController.signal]) : directController.signal,
         };
         if (outbound.body && !["GET", "HEAD"].includes(outbound.method.toUpperCase())) {
           directInit.body = outbound.body;
         }
         const directRes = await fetch(outbound.url, directInit);
-        if (directTimer) clearTimeout(directTimer);
         const text = await directRes.text();
         const respHeaders: Record<string, string> = {};
         directRes.headers.forEach((v, k) => {
@@ -592,7 +609,7 @@ export async function sendRequest(
           size: new Blob([text]).size,
         };
       } catch (directErr) {
-        if (directTimer) clearTimeout(directTimer);
+        signal?.throwIfAborted();
         const isAbort = (directErr as any)?.name === "AbortError";
         const errMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
         responseData = {
@@ -607,10 +624,13 @@ export async function sendRequest(
           time: 0,
           size: 0,
         };
+      } finally {
+        if (directTimer) clearTimeout(directTimer);
       }
     }
   }
 
+  signal?.throwIfAborted();
   // Attach outbound request representation
   if (responseData) {
     responseData.outbound = outbound;
@@ -652,6 +672,7 @@ export async function sendRequest(
         effectiveCollection,
         executionVars
       );
+      signal?.throwIfAborted();
       if (postResult.envModified) {
         effectiveEnv = { ...effectiveEnv, variables: postResult.updatedEnvVariables };
         if (onEnvUpdate) {
@@ -677,6 +698,7 @@ export async function sendRequest(
         allScriptLogs.push(`[Tests (${item.source})] ${log.message}`);
       }
     } catch (err) {
+      signal?.throwIfAborted();
       allScriptLogs.push(`[Tests Error (${item.source})] ${err instanceof Error ? err.message : String(err)}`);
     }
   }

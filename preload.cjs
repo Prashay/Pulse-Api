@@ -18,5 +18,6 @@ contextBridge.exposeInMainWorld("pulseDesktop", {
     },
   },
   proxyRequest: (payload) => ipcRenderer.invoke("pulse:proxy-request", payload),
+  cancelProxyRequest: (id) => ipcRenderer.send("pulse:cancel-proxy-request", id),
   checkHealth: () => ipcRenderer.invoke("pulse:health-check"),
 });

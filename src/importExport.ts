@@ -30,18 +30,22 @@ function fromPostmanKv(list: unknown): KeyValue[] {
   });
 }
 
-function authFromPostman(raw: unknown): AuthConfig {
+function authFromPostman(raw: unknown, inherited: AuthConfig = emptyAuth()): AuthConfig {
   const auth = emptyAuth();
-  if (!raw || typeof raw !== "object") return auth;
+  if (raw == null || raw === "inherit") return { ...inherited };
+  if (typeof raw !== "object") return auth;
   const obj = raw as Record<string, unknown>;
-  const type = asString(obj.type, "noauth");
+  const type = asString(obj.type, "inherit").toLowerCase();
+  if (type === "inherit") return { ...inherited };
   const find = (kind: string, key: string) => {
-    const arr = obj[kind];
-    if (!Array.isArray(arr)) return "";
-    const hit = arr.find((x) => asString((x as Record<string, unknown>).key) === key) as
-      | Record<string, unknown>
-      | undefined;
-    return hit ? asString(hit.value) : "";
+    const fields = obj[kind];
+    if (Array.isArray(fields)) {
+      return asString(fields.find((field) => field?.key === key)?.value);
+    }
+    if (fields && typeof fields === "object") {
+      return asString((fields as Record<string, unknown>)[key]);
+    }
+    return "";
   };
   if (type === "bearer") {
     auth.type = "bearer";
@@ -117,16 +121,17 @@ function extractScriptsFromPostmanEvents(eventRaw: unknown): { preScript?: strin
   };
 }
 
-function itemFromPostman(item: Record<string, unknown>): TreeNode {
+function itemFromPostman(item: Record<string, unknown>, inheritedAuth: AuthConfig): TreeNode {
   const name = asString(item.name, "Untitled");
   const scripts = extractScriptsFromPostmanEvents(item.event);
 
   if (Array.isArray(item.item)) {
+    const folderAuth = authFromPostman(item.auth, inheritedAuth);
     const folder: FolderItem = {
       id: uid("fld"),
       type: "folder",
       name,
-      children: item.item.map((child) => itemFromPostman(child as Record<string, unknown>)),
+      children: item.item.map((child) => itemFromPostman(child as Record<string, unknown>, folderAuth)),
       preScript: scripts.preScript,
       postScript: scripts.postScript,
     };
@@ -160,7 +165,7 @@ function itemFromPostman(item: Record<string, unknown>): TreeNode {
     headers: fromPostmanKv(req.header),
     bodyMode,
     body,
-    auth: authFromPostman(req.auth),
+    auth: authFromPostman(req.auth, inheritedAuth),
     preScript: scripts.preScript,
     postScript: scripts.postScript,
   };
@@ -178,12 +183,13 @@ export function importPostmanCollection(json: unknown): Collection {
     : [];
   const variables = rawVars.map(envValue).filter((v) => v.key.trim().length > 0);
   const rootScripts = extractScriptsFromPostmanEvents(root.event);
+  const rootAuth = authFromPostman(root.auth);
 
   return {
     id: uid("col"),
     name: asString(info.name, "Imported Collection"),
     description: asString(info.description),
-    children: items.map((item) => itemFromPostman(item as Record<string, unknown>)),
+    children: items.map((item) => itemFromPostman(item as Record<string, unknown>, rootAuth)),
     variables,
     preScript: rootScripts.preScript,
     postScript: rootScripts.postScript,

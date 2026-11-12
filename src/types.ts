@@ -106,6 +106,8 @@ export interface HistoryEntry {
   time: number;
   ok: boolean;
   error: boolean;
+  response?: Omit<ProxyResponse, "outbound">;
+  responseTruncated?: boolean;
 }
 
 export interface TestResult {
@@ -275,7 +277,9 @@ declare global {
         headers?: Record<string, string>;
         body?: string | null;
         timeout?: number;
+        cancellationId?: string;
       }) => Promise<ProxyResponse>;
+      cancelProxyRequest?: (cancellationId: string) => void;
       checkHealth?: () => Promise<{
         ok: boolean;
         service: string;
