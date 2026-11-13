@@ -1,6 +1,7 @@
 import { useState, useId } from "react";
 import type { KeyValue } from "../types";
 import { kv, uid } from "../id";
+import { VariableInput } from "./VariableInput";
 
 export interface HeaderPreset {
   label: string;
@@ -17,12 +18,12 @@ interface Props {
   allowBulkEdit?: boolean;
   title?: string;
   presets?: HeaderPreset[];
+  variables?: readonly string[];
 }
 
 export const COMMON_HEADER_PRESETS: HeaderPreset[] = [
   { label: "api-key ({{$guid}})", key: "api-key", value: "{{$guid}}", title: "Add api-key header with dynamic random GUID (generates unique value on send)" },
   { label: "JSON", key: "Content-Type", value: "application/json", title: "Add Content-Type: application/json" },
-  { label: "Bearer Auth", key: "Authorization", value: "Bearer {{apiKey}}", title: "Add Authorization: Bearer {{apiKey}}" },
   { label: "Accept JSON", key: "Accept", value: "application/json", title: "Add Accept: application/json" },
   { label: "X-Request-ID", key: "X-Request-ID", value: "{{$guid}}", title: "Add X-Request-ID with dynamic random GUID" },
 ];
@@ -87,22 +88,25 @@ export function KeyValueEditor({
   allowBulkEdit = true,
   title,
   presets,
+  variables,
 }: Props) {
   const [isBulk, setIsBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [newRow, setNewRow] = useState(() => kv("", "", true));
   const datalistKeyId = useId();
   const datalistValId = useId();
 
   const isHeaders = keyPlaceholder.toLowerCase().includes("header") || title?.toLowerCase().includes("header");
   const activePresets = presets || (isHeaders ? COMMON_HEADER_PRESETS : undefined);
 
-  const display = [...rows, kv("", "", true)];
+  const display = [...rows, newRow];
 
   const update = (index: number, patch: Partial<KeyValue>) => {
     const isNew = index >= rows.length;
     if (isNew) {
-      const created = { ...display[index], ...patch };
+      const created = { ...newRow, ...patch };
       if (!created.key && !created.value) return;
+      setNewRow(kv("", "", true));
       onChange([...rows, created]);
       return;
     }
@@ -268,12 +272,13 @@ export function KeyValueEditor({
                       />
                     </td>
                     <td className="kv-cell-val">
-                      <input
+                      <VariableInput
                         type="text"
-                        placeholder={valuePlaceholder}
+                        placeholder={row.key.trim().toLowerCase() === "authorization" ? "Type {{ to find a variable" : valuePlaceholder}
                         value={row.value}
-                        list={isHeaders ? datalistValId : undefined}
-                        onChange={(e) => update(index, { value: e.target.value })}
+                        list={isHeaders && row.key.trim().toLowerCase() !== "authorization" ? datalistValId : undefined}
+                        onValueChange={(value) => update(index, { value })}
+                        variables={variables}
                         aria-label="Value"
                       />
                     </td>
@@ -327,7 +332,6 @@ export function KeyValueEditor({
                 <option value="application/x-www-form-urlencoded" />
                 <option value="multipart/form-data" />
                 <option value="text/plain" />
-                <option value="Bearer {{apiKey}}" />
                 <option value="{{$guid}}" />
                 <option value="no-cache" />
                 <option value="*/*" />

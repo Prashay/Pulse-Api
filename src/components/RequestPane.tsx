@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import type { AuthConfig, BodyMode, Collection, Environment, HttpMethod, RequestSnapshot } from "../types";
 import { METHODS, METHOD_COLORS } from "../types";
 import { KeyValueEditor } from "./KeyValueEditor";
+import { VariableInput } from "./VariableInput";
 import { JsonBodyEditor } from "./JsonBodyEditor";
 import { extractVariables, interpolate, lookupVariable } from "../request";
 import { parseCurl } from "../curl";
@@ -38,6 +39,9 @@ interface Props {
 
 export function RequestPane(props: Props) {
   const { draft, env, collection } = props;
+  const environmentKeys = [...new Set(env?.variables
+    .filter((variable) => variable.enabled !== false && variable.key.trim())
+    .map((variable) => variable.key.trim()))];
 
   const [editingVar, setEditingVar] = useState<string | null>(null);
   const [editVarValue, setEditVarValue] = useState<string>("");
@@ -1001,11 +1005,12 @@ export function RequestPane(props: Props) {
                       </div>
                     </div>
                     <div className="password-input-wrapper">
-                      <input
+                      <VariableInput
                         type={showBearerToken ? "text" : "password"}
                         value={draft.auth.bearerToken}
                         placeholder="{{token}} or raw-token-xyz"
-                        onChange={(e) => setAuth({ bearerToken: e.target.value })}
+                        onValueChange={(bearerToken) => setAuth({ bearerToken })}
+                        variables={environmentKeys}
                         className="password-input-with-actions"
                       />
                       <div className="password-input-embedded-actions">
@@ -1045,10 +1050,11 @@ export function RequestPane(props: Props) {
                   <>
                     <div className="field">
                       <label>Username</label>
-                      <input
+                      <VariableInput
                         value={draft.auth.basicUser}
                         placeholder="{{user}} or username"
-                        onChange={(e) => setAuth({ basicUser: e.target.value })}
+                        onValueChange={(basicUser) => setAuth({ basicUser })}
+                        variables={environmentKeys}
                       />
                     </div>
                     <div className="field">
@@ -1088,11 +1094,12 @@ export function RequestPane(props: Props) {
                         </div>
                       </div>
                       <div className="password-input-wrapper">
-                        <input
+                        <VariableInput
                           type={showBasicPass ? "text" : "password"}
                           value={draft.auth.basicPass}
                           placeholder="{{password}} or password"
-                          onChange={(e) => setAuth({ basicPass: e.target.value })}
+                          onValueChange={(basicPass) => setAuth({ basicPass })}
+                          variables={environmentKeys}
                           className="password-input-with-actions"
                         />
                         <div className="password-input-embedded-actions">
@@ -1144,10 +1151,11 @@ export function RequestPane(props: Props) {
                   <>
                     <div className="field">
                       <label>Key Name</label>
-                      <input
+                      <VariableInput
                         value={draft.auth.apiKeyName}
                         placeholder="{{key}} or X-API-Key"
-                        onChange={(e) => setAuth({ apiKeyName: e.target.value })}
+                        onValueChange={(apiKeyName) => setAuth({ apiKeyName })}
+                        variables={environmentKeys}
                       />
                     </div>
                     <div className="field">
@@ -1179,11 +1187,12 @@ export function RequestPane(props: Props) {
                         </div>
                       </div>
                       <div className="password-input-wrapper">
-                        <input
+                        <VariableInput
                           type={showApiKeyValue ? "text" : "password"}
                           value={draft.auth.apiKeyValue}
                           placeholder="{{value}} or key-value"
-                          onChange={(e) => setAuth({ apiKeyValue: e.target.value })}
+                          onValueChange={(apiKeyValue) => setAuth({ apiKeyValue })}
+                          variables={environmentKeys}
                           className="password-input-with-actions"
                         />
                         <div className="password-input-embedded-actions">
@@ -1248,6 +1257,7 @@ export function RequestPane(props: Props) {
                   valuePlaceholder="Value"
                   title="Headers"
                   allowBulkEdit={true}
+                  variables={environmentKeys}
                 />
                 {/* Live Header Variable Resolution Feedback */}
                 {renderVariableChips(headerVars)}
@@ -1774,12 +1784,13 @@ export function RequestPane(props: Props) {
                 </div>
 
                 <div className="password-input-wrapper">
-                  <input
+                  <VariableInput
                     autoFocus
                     type={showBasicPass ? "text" : "password"}
                     value={draft.auth.basicPass}
                     placeholder="{{password}} or secret"
-                    onChange={(e) => setAuth({ basicPass: e.target.value })}
+                    onValueChange={(basicPass) => setAuth({ basicPass })}
+                    variables={environmentKeys}
                     className="password-input-with-actions"
                     style={{ fontSize: 13, padding: "8px 10px" }}
                   />

@@ -1008,6 +1008,36 @@ code, pre, .body-editor, .resp-pre, .console-terminal-lines, .console-terminal-i
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
+
+.variable-input-menu {
+  position: fixed;
+  z-index: 11000;
+  max-height: 170px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  font-family: var(--mono);
+}
+
+.variable-input-menu [role="option"] {
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.variable-input-empty {
+  padding: 5px 8px;
+  color: var(--text-dim);
+}
+
+.variable-input-menu [role="option"]:hover,
+.variable-input-menu [aria-selected="true"] {
+  background: var(--bg-active);
+}
 .tab-menu > button {
   flex-shrink: 0;
   padding: 6px 8px;

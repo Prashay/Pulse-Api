@@ -258,12 +258,23 @@ ipcMain.handle("pulse:proxy-request", async (event, reqData) => {
     }
 
     let response;
+    // Node fetch does not use Electron's system proxy configuration.
+    const session = event.sender.session;
+    const proxy = ["http:", "https:"].includes(parsed.protocol)
+      ? await session.resolveProxy(targetUrl)
+      : "DIRECT";
+    controller.signal.throwIfAborted();
+
     try {
-      response = await fetch(targetUrl, init);
+      response = proxy && proxy !== "DIRECT"
+        ? await session.fetch(targetUrl, { ...init, credentials: "omit", bypassCustomProtocolHandlers: true })
+        : await fetch(targetUrl, init);
     } catch (fetchErr) {
       // If localhost failed with ECONNREFUSED (due to Node IPv6 ::1 default), retry with IPv4 127.0.0.1
       if (
-        targetUrl.includes("localhost") &&
+        (!proxy || proxy === "DIRECT") &&
+        parsed.hostname === "localhost" &&
+        !controller.signal.aborted &&
         (fetchErr?.message?.includes("ECONNREFUSED") || fetchErr?.cause?.code === "ECONNREFUSED")
       ) {
         const ipv4Url = targetUrl.replace("://localhost", "://127.0.0.1");
@@ -302,18 +313,18 @@ ipcMain.handle("pulse:proxy-request", async (event, reqData) => {
       size: buffer.length,
     };
   } catch (err) {
-    const aborted = err && err.name === "AbortError";
-    const message = aborted
+    const timedOut = controller.signal.aborted && controller.signal.reason?.name === "AbortError";
+    const code = err?.cause?.code || err?.code;
+    const detail = err instanceof Error ? err.message : String(err);
+    const message = timedOut
       ? `Request timed out after ${parsedTimeout}ms`
-      : err instanceof Error
-      ? err.message
-      : String(err);
+      : code ? `${detail} (${code})` : detail;
 
     return {
       ok: false,
       error: true,
       status: 0,
-      statusText: aborted ? "Timeout" : "Network Error",
+      statusText: timedOut ? "Timeout" : "Network Error",
       headers: {},
       body: message,
       time: Date.now() - started,
