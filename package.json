@@ -8,7 +8,7 @@
   "type": "module",
   "main": "main.js",
   "scripts": {
-    "dev": "concurrently -k -n server,client -c cyan,magenta \"node server.js\" \"vite --host 0.0.0.0 --port 5173\"",
+    "dev": "concurrently --kill-others-on-fail -n server,client -c cyan,magenta \"node server.js\" \"vite --host 0.0.0.0 --port 5173\"",
     "server": "node server.js",
     "client": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc -b && vite build",

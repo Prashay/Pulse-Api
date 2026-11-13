@@ -26,6 +26,18 @@ export interface ThemePreset {
 
 export const THEME_PRESETS: ThemePreset[] = [
   {
+    id: "graphite",
+    name: "Graphite Glass",
+    badge: "DARK",
+    desc: "Smoked glass, charcoal panels, and lime charts",
+    bg: "#171819",
+    sidebarBg: "#323435",
+    cardBg: "#424344",
+    accent: "#d9ed52",
+    textColor: "#f6f7f2",
+    textMute: "#c2c5ba",
+  },
+  {
     id: "blue",
     name: "Midnight Blue",
     badge: "DEFAULT",
@@ -75,27 +87,15 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: "pearl",
-    name: "Pearl Light",
+    name: "Pearl Glass",
     badge: "LIGHT",
-    desc: "Pearl-white cards, a quiet gray canvas, and cobalt accents",
+    desc: "Pearl-gray canvas, translucent blue panels, and cobalt accents",
     bg: "#eef0f3",
-    sidebarBg: "#f6f7f9",
-    cardBg: "#ffffff",
+    sidebarBg: "#edf4fb",
+    cardBg: "#e4f0ff",
     accent: "#285ac5",
     textColor: "#182334",
     textMute: "#526074",
-  },
-  {
-    id: "dark-glass",
-    name: "Blue Glass",
-    badge: "LIGHT",
-    desc: "Translucent blue cards on a white canvas",
-    bg: "#ffffff",
-    sidebarBg: "#edf6ff",
-    cardBg: "#d5eaff",
-    accent: "#205ab1",
-    textColor: "#142946",
-    textMute: "#486382",
   },
 ];
 

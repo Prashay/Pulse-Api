@@ -4,7 +4,7 @@ import { METHOD_COLORS } from "../types";
 import { collectRequests, getProxyBaseUrl } from "../request";
 import { ResponsePane } from "./ResponsePane";
 
-type OverviewStyle = "glass" | "pearl" | "dark-glass";
+type OverviewStyle = "glass" | "pearl" | "graphite";
 
 interface Props {
   overviewStyle?: OverviewStyle;
@@ -22,6 +22,85 @@ interface Props {
   onSwitchToStudio: () => void;
   onLoadSamples?: () => void;
   onOpenDownload?: () => void;
+}
+
+function GraphiteCharts({ dates, activity, history }: { dates: Date[]; activity: number[]; history: HistoryEntry[] }) {
+  const peak = Math.max(1, ...activity);
+  const points = activity.map((count, index) => [index * 50, 94 - count / peak * 82]);
+  const line = points.map((point) => point.join(",")).join(" ");
+  const totalRuns = activity.reduce((total, count) => total + count, 0);
+  const methods = new Map<HistoryEntry["method"], number>();
+  for (const run of history) methods.set(run.method, (methods.get(run.method) ?? 0) + 1);
+  const colors = ["#d9ed52", "#80cbad", "#74a7bd", "#d9a578", "#bd9dc4", "#98a174", "#e48e94", "#b3c1cb", "#a2a7a1"];
+  const anglePerMethod = 2 * Math.PI / Math.max(1, methods.size);
+  const distribution = [...methods].sort((a, b) => b[1] - a[1]).map(([method, count], index) => {
+    const color = colors[index % colors.length];
+    const radius = 30 + Math.sqrt(count / history.length) * 62;
+    const start = index * anglePerMethod - Math.PI / 2 + 0.045;
+    const end = start + anglePerMethod - 0.09;
+    const arcStart = [Math.cos(start) * radius, Math.sin(start) * radius];
+    const arcEnd = [Math.cos(end) * radius, Math.sin(end) * radius];
+    const sector = "M0 0 L" + arcStart.join(" ") + " A" + radius + " " + radius
+      + " 0 " + (end - start > Math.PI ? 1 : 0) + " 1 " + arcEnd.join(" ") + " Z";
+    return { method, count, color, sector };
+  });
+  return (
+    <>
+      <div className="dash-card graphite-trend">
+        <div className="dash-card-header">
+          <h3 className="dash-card-title">Recorded runs by day</h3>
+          <span className="graphite-chart-period">Last 7 days</span>
+        </div>
+        <div className="graphite-chart-summary"><strong>{totalRuns}</strong><span>recorded runs</span></div>
+        {activity.some(Boolean) ? (
+          <>
+            <svg viewBox="-5 0 310 100" role="img" aria-label={dates.map((date, i) => date.toLocaleDateString() + ": " + activity[i] + " runs").join(", ")}>
+              <defs>
+                <pattern id="graphite-chart-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(42)">
+                  <path d="M0 0V8" stroke="currentColor" strokeWidth="3" opacity=".55" />
+                </pattern>
+              </defs>
+              <path d="M0 28H300 M0 61H300 M0 94H300" stroke="currentColor" opacity=".18" fill="none" />
+              <polygon points={"0,94 " + line + " 300,94"} fill="url(#graphite-chart-hatch)" />
+              <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" />
+              {points.map(([x, y], i) => (
+                <circle key={x} cx={x} cy={y} r="3" fill="currentColor">
+                  <title>{dates[i].toLocaleDateString()} · {activity[i]} runs</title>
+                </circle>
+              ))}
+            </svg>
+            <div className="graphite-chart-days" aria-hidden="true">{dates.map((date) => <span key={date.getTime()}>{date.toLocaleDateString(undefined, { weekday: "short" })}</span>)}</div>
+          </>
+        ) : <p className="muted">No requests recorded in the last seven days.</p>}
+      </div>
+      <div className="dash-card graphite-methods">
+        <div className="dash-card-header">
+          <h3 className="dash-card-title">Request methods</h3>
+          <span className="graphite-chart-period">All recorded runs</span>
+        </div>
+        {distribution.length ? (
+          <>
+            <svg className="graphite-method-wheel" viewBox="-100 -100 200 200" aria-hidden="true">
+              {[34, 64, 94].map((radius) => <circle key={radius} r={radius} fill="none" stroke="currentColor" opacity=".2" />)}
+              {distribution.map(({ method, color, sector }) => (
+                <path key={method} d={sector} fill={color} fillOpacity=".32" stroke={color} />
+              ))}
+              <circle r="17" fill="var(--bg-2)" stroke="var(--border)" />
+              <text y="4" textAnchor="middle" fill="currentColor" fontSize="12">{history.length}</text>
+            </svg>
+            <ul>{distribution.map(({ method, count, color }) => (
+              <li key={method}>
+                <span style={{ background: color }} />
+                {method}
+                <strong>{count}</strong>
+                <span className="graphite-method-share">{Math.round(count / history.length * 100)}%</span>
+              </li>
+            ))}</ul>
+          </>
+        ) : <p className="muted">No request methods recorded yet.</p>}
+      </div>
+    </>
+  );
 }
 
 function DashboardOverview({ style, collections, history, passed, activeEnvironment, proxyOnline, totalRequests }: {
@@ -86,7 +165,7 @@ function DashboardOverview({ style, collections, history, passed, activeEnvironm
           <span>{passed} succeeded</span><span>{history.length - passed} failed</span>
         </div>
       </div>
-      <div className="dash-card overview-chart">
+      {style !== "graphite" && <div className="dash-card overview-chart">
         <div className="overview-chart-header">
           <h3 className="dash-card-title">{style === "glass" ? "Most used APIs" : "Recorded runs by day"}</h3>
           {style === "glass" && (
@@ -130,7 +209,8 @@ function DashboardOverview({ style, collections, history, passed, activeEnvironm
             ))}
           </div>
         )}
-      </div>
+      </div>}
+      {style === "graphite" && <GraphiteCharts dates={dates} activity={activity} history={history} />}
       <div className="overview-workspace">
         <div className="dash-card"><h3 className="dash-card-title">Collections</h3><strong className="overview-value">{collections.length}</strong><div className="muted">{totalRequests} endpoints</div></div>
         <div className="dash-card"><h3 className="dash-card-title">Active environment</h3><strong>{activeEnvironment ?? "None"}</strong></div>
