@@ -4,7 +4,10 @@ import { METHOD_COLORS } from "../types";
 import { collectRequests, getProxyBaseUrl } from "../request";
 import { ResponsePane } from "./ResponsePane";
 
+type OverviewStyle = "glass" | "pearl" | "dark-glass";
+
 interface Props {
+  overviewStyle?: OverviewStyle;
   collections: Collection[];
   environments: Environment[];
   activeEnvId: string | null;
@@ -19,6 +22,122 @@ interface Props {
   onSwitchToStudio: () => void;
   onLoadSamples?: () => void;
   onOpenDownload?: () => void;
+}
+
+function DashboardOverview({ style, collections, history, passed, activeEnvironment, proxyOnline, totalRequests }: {
+  style: OverviewStyle;
+  collections: Collection[];
+  history: HistoryEntry[];
+  passed: number;
+  activeEnvironment?: string;
+  proxyOnline?: boolean;
+  totalRequests: number;
+}) {
+  const rate = history.length ? Math.round(passed / history.length * 100) : 0;
+  const [daysAgo, setDaysAgo] = useState(0);
+  const dates = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() + index - 6);
+    return day;
+  });
+  const activity = style !== "glass" ? dates.map((day) => {
+    const end = new Date(day);
+    end.setDate(end.getDate() + 1);
+    return history.filter((run) => run.timestamp >= day.getTime() && run.timestamp < end.getTime()).length;
+  }) : [];
+  const activityMax = Math.max(1, ...activity);
+  const apiCounts = new Map<string, { method: HistoryEntry["method"]; url: string; count: number }>();
+  let dailyRuns = 0;
+  if (style === "glass") {
+    const day = dates[dates.length - 1 - daysAgo];
+    const end = new Date(day);
+    end.setDate(end.getDate() + 1);
+    for (const { method, url, timestamp } of history) {
+      if (timestamp < day.getTime() || timestamp >= end.getTime() || !url.trim()) continue;
+      dailyRuns += 1;
+      const key = `${method} ${url}`;
+      const api = apiCounts.get(key);
+      if (api) api.count += 1;
+      else apiCounts.set(key, { method, url, count: 1 });
+    }
+  }
+  const mostUsed = [...apiCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5);
+  const maxRuns = mostUsed[0]?.count ?? 1;
+
+  return (
+    <section className={`dashboard-overview overview-${style}`} aria-label="Workspace overview">
+      <div className="dash-card overview-outcomes">
+        <h3 className="dash-card-title">Request outcomes</h3>
+        {style === "glass" && (
+          <div className="overview-ring" style={{ background: history.length ? `conic-gradient(var(--accent) ${rate}%, var(--glass-chart-track) 0)` : undefined }} aria-hidden="true">
+            <span>{history.length}</span>
+          </div>
+        )}
+        <strong className="overview-value">{history.length ? `${rate}%` : "—"}</strong>
+        <p className="muted">{history.length ? "Successful requests" : "No requests recorded"}</p>
+        {style !== "glass" && history.length > 0 && (
+          <div className="overview-segments" aria-hidden="true">
+            <span style={{ flexGrow: passed }} />
+            <span style={{ flexGrow: history.length - passed }} />
+          </div>
+        )}
+        <div className="overview-outcome-counts">
+          <span>{passed} succeeded</span><span>{history.length - passed} failed</span>
+        </div>
+      </div>
+      <div className="dash-card overview-chart">
+        <div className="overview-chart-header">
+          <h3 className="dash-card-title">{style === "glass" ? "Most used APIs" : "Recorded runs by day"}</h3>
+          {style === "glass" && (
+            <select aria-label="API usage day" value={daysAgo} onChange={(event) => setDaysAgo(Number(event.target.value))}>
+              {[...dates].reverse().map((day, index) => (
+                <option key={day.getTime()} value={index}>
+                  {index === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {style === "glass" ? (
+          <>
+            <div className="api-usage-counters">
+              <div><span>Recorded runs</span><strong>{dailyRuns}</strong></div>
+              <div><span>Unique APIs</span><strong>{apiCounts.size}</strong></div>
+              <div><span>Top API runs</span><strong>{mostUsed[0]?.count ?? 0}</strong></div>
+            </div>
+            {mostUsed.length > 0 ? (
+              <ol className="api-usage-chart" aria-label="Top APIs by recorded runs">
+                {mostUsed.map(({ method, url, count }) => (
+                  <li className="api-usage-row" key={`${method} ${url}`}>
+                    <span className={`method ${METHOD_COLORS[method]}`}>{method}</span>
+                    <span className="api-usage-url" title={url}>{url}</span>
+                    <strong>{count}</strong>
+                    <div className="overview-track" aria-hidden="true"><span style={{ width: `${count / maxRuns * 100}%` }} /></div>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="muted">No API runs recorded for this day.</p>}
+          </>
+        ) : (
+          <div className="overview-activity">
+            {dates.map((day, index) => (
+              <div key={day.getTime()} title={day.toLocaleDateString()}>
+                <strong>{activity[index]}</strong>
+                <div className="overview-track" aria-hidden="true"><span style={{ height: `${activity[index] / activityMax * 100}%` }} /></div>
+                <span>{day.toLocaleDateString(undefined, { weekday: "short" })}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="overview-workspace">
+        <div className="dash-card"><h3 className="dash-card-title">Collections</h3><strong className="overview-value">{collections.length}</strong><div className="muted">{totalRequests} endpoints</div></div>
+        <div className="dash-card"><h3 className="dash-card-title">Active environment</h3><strong>{activeEnvironment ?? "None"}</strong></div>
+        <div className="dash-card"><h3 className="dash-card-title">Local proxy</h3><strong>{proxyOnline === undefined ? "Checking" : proxyOnline ? "Healthy" : "Offline"}</strong></div>
+      </div>
+    </section>
+  );
 }
 
 function latencyKey({ requestId, method, url }: Pick<HistoryEntry, "requestId" | "method" | "url">) {
@@ -43,6 +162,7 @@ function RequestLatency({ run }: { run?: HistoryEntry }) {
 }
 
 export function DashboardView({
+  overviewStyle,
   collections,
   environments,
   activeEnvId,
@@ -67,14 +187,6 @@ export function DashboardView({
   }, [selectedRun]);
 
   const [proxyPing, setProxyPing] = useState<{ ok: boolean; time: number } | null>(null);
-  const [mockLoading, setMockLoading] = useState<string | null>(null);
-  const [mockOutput, setMockOutput] = useState<{
-    endpoint: string;
-    status: number;
-    time: number;
-    body: string;
-  } | null>(null);
-
   const activeEnv = useMemo(
     () => environments.find((e) => e.id === activeEnvId) ?? null,
     [environments, activeEnvId]
@@ -149,55 +261,6 @@ export function DashboardView({
     };
   }, []);
 
-  const runMockQuickTest = async (endpoint: string, method = "GET") => {
-    setMockLoading(endpoint);
-    const start = Date.now();
-    try {
-      let data: any;
-      if (typeof window !== "undefined" && window.pulseDesktop?.proxyRequest) {
-        data = await window.pulseDesktop.proxyRequest({
-          method,
-          url: `http://127.0.0.1:3001${endpoint}`,
-          headers: endpoint.includes("auth")
-            ? { Authorization: "Bearer pulse-demo-token" }
-            : {},
-          body: method === "POST" ? JSON.stringify({ ping: "dashboard", now: Date.now() }) : null,
-          timeout: 5000,
-        });
-      } else {
-        const res = await fetch(`${getProxyBaseUrl()}/api/proxy`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            method,
-            url: `http://127.0.0.1:3001${endpoint}`,
-            headers: endpoint.includes("auth")
-              ? { Authorization: "Bearer pulse-demo-token" }
-              : {},
-            body: method === "POST" ? JSON.stringify({ ping: "dashboard", now: Date.now() }) : null,
-            timeout: 5000,
-          }),
-        });
-        data = await res.json();
-      }
-      setMockOutput({
-        endpoint,
-        status: data.status,
-        time: data.time || Date.now() - start,
-        body: typeof data.body === "string" ? data.body : JSON.stringify(data.body, null, 2),
-      });
-    } catch (err) {
-      setMockOutput({
-        endpoint,
-        status: 0,
-        time: Date.now() - start,
-        body: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setMockLoading(null);
-    }
-  };
-
   return (
     <div className="dashboard-container">
       {/* Top Welcome & Actions Header */}
@@ -270,6 +333,17 @@ export function DashboardView({
       </div>
 
       {/* KPI Metric Cards */}
+      {overviewStyle ? (
+        <DashboardOverview
+          style={overviewStyle}
+          collections={collections}
+          history={history}
+          passed={passedTests}
+          activeEnvironment={activeEnv?.name}
+          proxyOnline={proxyPing?.ok}
+          totalRequests={totalRequests}
+        />
+      ) : (
       <div className="dash-kpi-grid">
         <div className="kpi-card">
           <div className="kpi-icon-wrap kpi-blue">
@@ -340,9 +414,11 @@ export function DashboardView({
         </div>
       </div>
 
+      )}
+
       {/* Main Dashboard Layout (2 Columns) */}
       <div className="dash-content-grid">
-        {/* Left Column: Collections Hub & Local Mock Playground */}
+        {/* Left Column: Collections Hub */}
         <div className="dash-col-main">
           {/* Section: Collections Hub */}
           <div className="dash-card">
@@ -434,67 +510,6 @@ export function DashboardView({
             </div>
           </div>
 
-          {/* Section: Local Mock Engine Testbed */}
-          <div className="dash-card" style={{ marginTop: 18 }}>
-            <div className="dash-card-header">
-              <div>
-                <h3 className="dash-card-title">Local Mock API Testbed</h3>
-                <div className="dash-card-subtitle">
-                  Instant offline testing of localhost endpoints and proxy pipeline directly from the dashboard.
-                </div>
-              </div>
-            </div>
-
-            <div className="mock-grid">
-              <div className="mock-btn-group">
-                <button
-                  className="btn sm"
-                  disabled={Boolean(mockLoading)}
-                  onClick={() => void runMockQuickTest("/api/health", "GET")}
-                >
-                  <span className="method method-get">GET</span> /api/health
-                </button>
-                <button
-                  className="btn sm"
-                  disabled={Boolean(mockLoading)}
-                  onClick={() => void runMockQuickTest("/api/mock/echo", "POST")}
-                >
-                  <span className="method method-post">POST</span> /api/mock/echo
-                </button>
-                <button
-                  className="btn sm"
-                  disabled={Boolean(mockLoading)}
-                  onClick={() => void runMockQuickTest("/api/mock/users", "GET")}
-                >
-                  <span className="method method-get">GET</span> /api/mock/users
-                </button>
-                <button
-                  className="btn sm"
-                  disabled={Boolean(mockLoading)}
-                  onClick={() => void runMockQuickTest("/api/mock/auth-check", "GET")}
-                >
-                  <span className="method method-get">GET</span> /api/mock/auth-check
-                </button>
-              </div>
-
-              {mockOutput && (
-                <div className="mock-result-box">
-                  <div className="mock-result-header">
-                    <span>
-                      <b>Target:</b> {mockOutput.endpoint}
-                    </span>
-                    <span
-                      className={mockOutput.status === 200 ? "status-ok" : "status-err"}
-                      style={{ fontWeight: 700 }}
-                    >
-                      Status: {mockOutput.status} · {mockOutput.time}ms
-                    </span>
-                  </div>
-                  <pre className="mock-result-body">{mockOutput.body}</pre>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Right Column: Environment Inspector & Recent Execution Stream */}

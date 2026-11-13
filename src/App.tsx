@@ -10,6 +10,7 @@ import type {
   RequestItem,
   RequestSnapshot,
   TabState,
+  ThemeMode,
   TreeNode,
 } from "./types";
 import { emptySnapshot, METHOD_COLORS, requestToSnapshot, snapshotToRequest } from "./types";
@@ -54,14 +55,13 @@ import { AppleWelcomeModal } from "./components/AppleWelcomeModal";
 import { DownloadModal } from "./components/DownloadModal";
 import {
   SettingsModal,
+  THEME_PRESETS,
   type FontSettings,
   type PanelLayoutMode,
   FONT_FAMILY_PRESETS,
   CODE_FONT_PRESETS,
 } from "./components/SettingsModal";
 import { toCurl } from "./curl";
-
-export type ThemeMode = "blue" | "dark" | "light";
 
 function blankTab(): TabState {
   return {
@@ -147,8 +147,7 @@ export default function App({ initialData }: { initialData: AppData }) {
   };
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("pulse_theme");
-    if (saved === "blue" || saved === "dark" || saved === "light") return saved;
-    return "blue";
+    return THEME_PRESETS.find((preset) => preset.id === saved)?.id ?? "blue";
   });
   const [tabs, setTabs] = useState<TabState[]>(() => {
     const firstCol = data.collections[0];
@@ -1488,25 +1487,6 @@ export default function App({ initialData }: { initialData: AppData }) {
           </button>
           {activeEnv && (
             <>
-              {(() => {
-                const bVal = activeEnv.variables.find((v) => v.key === "baseUrl" && v.enabled !== false)?.value;
-                return (
-                  <button
-                    type="button"
-                    className="top-env-baseurl-chip"
-                    title={`Active baseUrl: ${bVal || "not set"}. Click to edit.`}
-                    onClick={() => {
-                      setEditTargetEnvId(activeEnv.id);
-                      setEditTargetVarKey("baseUrl");
-                      setEnvOpen(true);
-                    }}
-                  >
-                    <span className="baseurl-tag">baseUrl:</span>
-                    <span className="baseurl-text">{bVal || '""'}</span>
-                    <span className="baseurl-pencil">✏️</span>
-                  </button>
-                );
-              })()}
               <button
                 className="top-env-action-btn"
                 title={`Edit environment "${activeEnv.name}"`}
@@ -1625,15 +1605,14 @@ export default function App({ initialData }: { initialData: AppData }) {
           {/* Quick Theme Toggle (Click cycles themes, or open full Theme tab in Settings) */}
           <button
             className="top-theme-quick-btn"
-            title={`Current theme: ${theme === "light" ? "Light" : theme === "dark" ? "Dark" : "Midnight Blue"}. Click to cycle themes, or customize in Settings.`}
+            title={`Current theme: ${THEME_PRESETS.find((preset) => preset.id === theme)?.name}. Click to cycle themes, or customize in Settings.`}
             onClick={() => {
-              const nextTheme: ThemeMode = theme === "light" ? "dark" : theme === "dark" ? "blue" : "light";
-              setTheme(nextTheme);
-              localStorage.setItem("pulse_theme", nextTheme);
+              const index = THEME_PRESETS.findIndex((preset) => preset.id === theme);
+              setTheme(THEME_PRESETS[(index + 1) % THEME_PRESETS.length].id);
             }}
             aria-label="Quick Toggle Theme"
           >
-            {theme === "light" ? (
+            {theme === "light" || theme === "pearl" || theme === "dark-glass" || theme === "glass" ? (
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="4" />
                 <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
@@ -1850,6 +1829,7 @@ export default function App({ initialData }: { initialData: AppData }) {
         />
         {viewMode === "dashboard" ? (
           <DashboardView
+            overviewStyle={theme === "glass" || theme === "pearl" || theme === "dark-glass" ? theme : undefined}
             collections={data.collections}
             environments={data.environments}
             activeEnvId={data.activeEnvId}

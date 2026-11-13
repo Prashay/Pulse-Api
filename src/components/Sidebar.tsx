@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import type { Collection, Environment, TreeNode } from "../types";
 import { METHOD_COLORS } from "../types";
 
@@ -142,23 +143,39 @@ export function Sidebar(props: Props) {
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusFilter, setPlusFilter] = useState("");
   const plusWrapperRef = useRef<HTMLDivElement>(null);
+  const plusDropdownRef = useRef<HTMLDivElement>(null);
   const plusSearchInputRef = useRef<HTMLInputElement>(null);
+  const [plusAnchor, setPlusAnchor] = useState<DOMRect | null>(null);
 
   const addCollectionFolder = () => props.onNewFolder("", null);
 
   useEffect(() => {
     if (!plusMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
-      if (plusWrapperRef.current && !plusWrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (!plusWrapperRef.current?.contains(target) && !plusDropdownRef.current?.contains(target)) {
         setPlusMenuOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPlusMenuOpen(false);
+      if (e.key === "Escape") {
+        setPlusMenuOpen(false);
+        plusWrapperRef.current?.querySelector("button")?.focus();
+      }
     };
+    const updatePosition = () => {
+      const anchor = plusWrapperRef.current?.getBoundingClientRect();
+      if (!anchor?.width || !anchor.height) setPlusMenuOpen(false);
+      else setPlusAnchor(anchor);
+    };
+    const observer = new ResizeObserver(updatePosition);
+    if (plusWrapperRef.current) observer.observe(plusWrapperRef.current);
+    window.addEventListener("resize", updatePosition);
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePosition);
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("keydown", onKeyDown);
     };
@@ -347,6 +364,7 @@ export function Sidebar(props: Props) {
             className="mobile-sidebar-close"
             onClick={(e) => {
               e.stopPropagation();
+              setPlusAnchor(e.currentTarget.getBoundingClientRect());
               props.onCloseMobile?.();
             }}
             aria-label="Close Sidebar"
@@ -372,6 +390,8 @@ export function Sidebar(props: Props) {
               setPlusFilter("");
             }}
             aria-label="Create new"
+            aria-expanded={plusMenuOpen}
+            aria-controls={plusMenuOpen ? "sidebar-create-menu" : undefined}
           >
             <svg
               width="14"
@@ -388,8 +408,19 @@ export function Sidebar(props: Props) {
             </svg>
           </button>
 
-          {plusMenuOpen && (
-            <div className="plus-dropdown" onClick={(e) => e.stopPropagation()}>
+          {plusMenuOpen && plusAnchor && createPortal(
+            <div
+              id="sidebar-create-menu"
+              ref={plusDropdownRef}
+              className="plus-dropdown"
+              style={{
+                left: Math.max(8, Math.min(plusAnchor.left, window.innerWidth - 298)),
+                ...(window.innerHeight - plusAnchor.bottom >= plusAnchor.top
+                  ? { top: plusAnchor.bottom + 6, maxHeight: Math.min(480, window.innerHeight - plusAnchor.bottom - 14) }
+                  : { bottom: window.innerHeight - plusAnchor.top + 6, maxHeight: Math.min(480, plusAnchor.top - 14) }),
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="plus-search-box">
                 <span className="plus-search-icon">🔍</span>
                 <input
@@ -418,7 +449,8 @@ export function Sidebar(props: Props) {
                   <div className="plus-empty">No results for "{plusFilter}"</div>
                 )}
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
         <button

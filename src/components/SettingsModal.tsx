@@ -61,6 +61,42 @@ export const THEME_PRESETS: ThemePreset[] = [
     textColor: "#1d1d1f",
     textMute: "#646469",
   },
+  {
+    id: "glass",
+    name: "Frosted Glass",
+    badge: "LIGHT",
+    desc: "Warm white and peach glass with burnt-orange accents",
+    bg: "#ffffff",
+    sidebarBg: "#fff3eb",
+    cardBg: "#ffdfcc",
+    accent: "#a63c12",
+    textColor: "#32231d",
+    textMute: "#6e5346",
+  },
+  {
+    id: "pearl",
+    name: "Pearl Light",
+    badge: "LIGHT",
+    desc: "Pearl-white cards, a quiet gray canvas, and cobalt accents",
+    bg: "#eef0f3",
+    sidebarBg: "#f6f7f9",
+    cardBg: "#ffffff",
+    accent: "#285ac5",
+    textColor: "#182334",
+    textMute: "#526074",
+  },
+  {
+    id: "dark-glass",
+    name: "Blue Glass",
+    badge: "LIGHT",
+    desc: "Translucent blue cards on a white canvas",
+    bg: "#ffffff",
+    sidebarBg: "#edf6ff",
+    cardBg: "#d5eaff",
+    accent: "#205ab1",
+    textColor: "#142946",
+    textMute: "#486382",
+  },
 ];
 
 export const FONT_FAMILY_PRESETS = [
@@ -303,79 +339,46 @@ export const SettingsModal: FC<Props> = ({
                 {THEME_PRESETS.map((t) => {
                   const isSelected = theme === t.id;
                   return (
-                    <div
+                    <button
                       key={t.id}
+                      type="button"
                       className={`theme-card ${isSelected ? "selected" : ""}`}
+                      aria-pressed={isSelected}
                       onClick={() => onUpdateTheme?.(t.id)}
                     >
-                      <div
-                        className="theme-card-preview"
-                        style={{
-                          background: t.bg,
-                          borderColor: isSelected ? t.accent : undefined,
-                        }}
-                      >
-                        <div
-                          className="theme-card-preview-sidebar"
-                          style={{ background: t.sidebarBg }}
-                        >
-                          <div
-                            className="theme-card-preview-item"
-                            style={{ background: t.accent, width: "65%" }}
-                          />
-                          <div
-                            className="theme-card-preview-item"
-                            style={{ background: t.cardBg, width: "80%" }}
-                          />
-                          <div
-                            className="theme-card-preview-item"
-                            style={{ background: t.cardBg, width: "50%" }}
-                          />
-                        </div>
-                        <div className="theme-card-preview-main">
-                          <div
-                            className="theme-card-preview-bar"
-                            style={{ background: t.cardBg, borderColor: t.accent }}
-                          >
-                            <span style={{ color: t.accent, fontWeight: 700, fontSize: 8 }}>
-                              GET
-                            </span>
-                            <span style={{ color: t.textMute, fontSize: 7.5 }}>
-                              api/users
-                            </span>
-                          </div>
-                          <div className="theme-card-preview-content">
-                            <div
-                              className="theme-preview-code-line"
-                              style={{ background: t.textColor, width: "75%" }}
-                            />
-                            <div
-                              className="theme-preview-code-line"
-                              style={{ background: t.accent, width: "50%" }}
-                            />
-                            <div
-                              className="theme-preview-code-line"
-                              style={{ background: t.textMute, width: "60%" }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="theme-card-info">
-                        <div className="theme-card-title-row">
-                          <span className="theme-card-name">
-                            {t.name}
+                      <span className="theme-card-preview" data-theme={t.id} aria-hidden="true">
+                        <span className="theme-preview-toolbar">
+                          <span>Pulse</span><span>Studio</span><span>Dashboard</span>
+                        </span>
+                        <span className="theme-preview-layout">
+                          <span className="theme-card-preview-sidebar">
+                            <strong>Collections</strong>
+                            <span>▸ Users API</span>
+                            <span>▸ Orders API</span>
+                            <strong>Environments</strong>
+                            <span>Development</span>
                           </span>
+                          <span className="theme-card-preview-main">
+                            <strong>Overview</strong>
+                            <span className="theme-preview-metrics">
+                              <span>Requests <strong>24</strong></span>
+                              <span>Success <strong>96%</strong></span>
+                            </span>
+                            <span className="theme-card-preview-bar">
+                              <strong>GET</strong><span>/api/users</span><span className="theme-preview-send">Send</span>
+                            </span>
+                          </span>
+                        </span>
+                      </span>
+                      <span className="theme-card-info">
+                        <span className="theme-card-title-row">
+                          <span className="theme-card-name">{t.name}</span>
                           <span className="theme-card-badge">{t.badge}</span>
-                        </div>
-                        <p className="theme-card-desc">{t.desc}</p>
-                        {isSelected && (
-                          <div className="theme-card-active-indicator">
-                            <span className="theme-check-icon">✓</span>
-                            <span>Active Theme</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                        </span>
+                        <span className="theme-card-desc">{t.desc}</span>
+                        {isSelected && <span className="theme-card-active-indicator">✓ Active theme</span>}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
